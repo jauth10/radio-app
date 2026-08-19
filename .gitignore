@@ -34,3 +34,7 @@ secrets.properties
 .idea/deploymentTargetSelector.xml
 .idea/deviceManager.xml
 .idea/androidTestResultsUserPreferences.xml
+.idea/markdown.xml
+# Regenerated from Gradle on every sync and would duplicate the Kotlin version
+# that gradle/libs.versions.toml already owns.
+.idea/kotlinc.xml

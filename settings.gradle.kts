@@ -24,3 +24,6 @@ dependencyResolutionManagement {
 
 rootProject.name = "RadioApp"
 include(":app")
+// Shells for RAD-3 (contract) and RAD-12 (stub-server); content is owned by Fabian.
+include(":contract")
+include(":stub-server")

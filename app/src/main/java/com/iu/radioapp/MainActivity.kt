@@ -11,17 +11,26 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
+import com.iu.radioapp.di.ScaffoldMarker
 import com.iu.radioapp.ui.theme.RadioAppTheme
+import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
+@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    // Injection proof for RAD-2, replaced by real dependencies from RAD-4 on.
+    @Inject
+    lateinit var scaffoldMarker: ScaffoldMarker
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             RadioAppTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    Greeting(
-                        name = "Android",
+                    ScaffoldInfo(
+                        text = scaffoldMarker.text,
                         modifier = Modifier.padding(innerPadding)
                     )
                 }
@@ -31,17 +40,17 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
+fun ScaffoldInfo(text: String, modifier: Modifier = Modifier) {
     Text(
-        text = "Hello $name!",
+        text = text,
         modifier = modifier
     )
 }
 
 @Preview(showBackground = true)
 @Composable
-fun GreetingPreview() {
+fun ScaffoldInfoPreview() {
     RadioAppTheme {
-        Greeting("Android")
+        ScaffoldInfo("Hilt-Injektion aktiv")
     }
 }
