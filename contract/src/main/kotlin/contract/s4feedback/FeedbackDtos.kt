@@ -1,89 +1,90 @@
 package contract.s4feedback
 
-import kotlinx.datetime.Instant
 import kotlinx.serialization.Serializable
+import kotlin.time.Instant
 
 /**
- * S4 – Feedback & Hörerforschung.
- *   POST /bewertungen                          -> BewertungResponse  (Idempotenz-Schlüssel)
- *   GET  /bewertungen/aggregat?sendungId=      -> AggregatDto
- *   GET  /bewertungen?seit=&sendungId=         -> List<BewertungsEreignisDto>  (POLLING-Rückfall)
- *   WS   /ereignisse/bewertungen               -> NEUE_BEWERTUNG / AGGREGAT_AKTUALISIERT
+ * S4 - Feedback & listener research.
+ *   POST /ratings                        -> RatingResponse  (idempotency key)
+ *   GET  /ratings/aggregate?showId=      -> AggregateDto
+ *   GET  /ratings?since=&showId=         -> List<RatingEventDto>  (POLLING fallback)
+ *   WS   /events/ratings                 -> NEW_RATING / AGGREGATE_UPDATED
  */
 
 /**
- * Request zum Absenden einer Bewertung. Trägt 'Idempotenz-Schluessel'.
+ * Request body for submitting a rating. Carries 'Idempotency-Key'.
  *
- * bezugId: bei gegenstand=PLAYLIST die sendungId, bei
- * gegenstand=MODERATION die moderationId.
- * wert: 1..5, außerhalb -> 422.
- * zeitpunkt: Erstellzeitpunkt auf dem GERÄT (offline-fähig).
+ * referenceId: for target=PLAYLIST this is the showId, for
+ * target=HOST it is the hostId.
+ * value: 1..5, outside that range -> 422.
+ * timestamp: creation time on the DEVICE (offline-capable).
  */
 @Serializable
-data class BewertungRequest(
-    val gegenstand: Bewertungsgegenstand,
-    val bezugId: String,
-    val wert: Int,
-    val kommentar: String?,
-    val hoererId: String,
-    val zeitpunkt: Instant,
+data class RatingRequest(
+    val target: RatingTarget,
+    val referenceId: String,
+    val value: Int,
+    val comment: String?,
+    val listenerId: String,
+    val timestamp: Instant,
 )
 
 /**
- * Antwort auf eine akzeptierte Bewertung.
- * Eine Ablehnung kommt serverseitig als 409/422 mit FehlerDto; 
- * eine Erfolgsantwort (2xx) impliziert bereits die Annahme.
+ * Response for an accepted rating.
+ * A rejection arrives server-side as 409/422 with ErrorDto; a success
+ * response (2xx) already implies acceptance.
  */
 @Serializable
-data class BewertungResponse(
-    val bewertungId: String,
+data class RatingResponse(
+    val ratingId: String,
 )
 
 /**
- * Aggregatwerte für eine Sendung.
+ * Aggregate values for a show.
  */
 @Serializable
-data class AggregatDto(
-    val durchschnittPlaylist: Double,
-    val anzahlPlaylist: Int,
-    val durchschnittModeration: Double,
-    val anzahlModeration: Int,
-    val zeitfenster: Zeitfenster,
+data class AggregateDto(
+    val averagePlaylistRating: Double,
+    val playlistRatingCount: Int,
+    val averageHostRating: Double,
+    val hostRatingCount: Int,
+    val timeWindow: TimeWindow,
 )
 
 @Serializable
-data class Zeitfenster(
-    val von: Instant,
-    val bis: Instant,
+data class TimeWindow(
+    val from: Instant,
+    val to: Instant,
 )
 
 /**
- * Ein Bewertungsereignis – identische Form für den WebSocket-Push UND die
- * Polling-Antwort (GET /bewertungen?seit=). Eine Form, zwei Transportwege.
+ * A rating event - identical shape for the WebSocket push AND the polling
+ * response (GET /ratings?since=). One shape, two transport paths.
  *
- * Wichtig zur Latenzmessung: t0 ist der EMPFANGSzeitpunkt auf dem
- * SERVER, nicht das Client-Feld aus dem Request. Nur so misst t1 - t0 die
- * echte Ende-zu-Ende-Latenz und nicht die Uhrenabweichung des Geräts.
+ * Important for latency measurement: serverReceivedAt is the RECEIVE time
+ * on the SERVER, not the client field from the request. Only that way does
+ * t1 - serverReceivedAt measure the real end-to-end latency and not the
+ * device's clock drift.
  */
 @Serializable
-data class BewertungsEreignisDto(
-    val bewertungId: String,
-    val gegenstand: Bewertungsgegenstand,
-    val wert: Int,
-    val kommentar: String?,
-    val t0: Instant,          // Server-Empfangszeitpunkt (Latenz-Messpunkt)
-    val anzeigename: String?,
+data class RatingEventDto(
+    val ratingId: String,
+    val target: RatingTarget,
+    val value: Int,
+    val comment: String?,
+    val serverReceivedAt: Instant,   // server receive time (latency measurement point)
+    val displayName: String?,
 )
 
 @Serializable
-enum class Bewertungsgegenstand {
+enum class RatingTarget {
     PLAYLIST,
-    MODERATION,
+    HOST,
 }
 
-/** Nachrichtentypen im WebSocket-Kanal. */
+/** Message types on the WebSocket channel. */
 @Serializable
-enum class EreignisTyp {
-    NEUE_BEWERTUNG,
-    AGGREGAT_AKTUALISIERT,
+enum class EventType {
+    NEW_RATING,
+    AGGREGATE_UPDATED,
 }
