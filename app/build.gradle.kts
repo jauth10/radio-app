@@ -38,6 +38,14 @@ android {
     }
 }
 
+kotlin {
+    compilerOptions {
+        // kotlin.time.Instant (stdlib) is still experimental; every domain field
+        // of that type needs this opt-in. Mirrors contract/build.gradle.kts.
+        optIn.add("kotlin.time.ExperimentalTime")
+    }
+}
+
 dependencies {
     // Compose
     implementation(platform(libs.androidx.compose.bom))
@@ -73,7 +81,6 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
-    implementation(libs.kotlinx.datetime)
 
     // Unit tests
     testImplementation(libs.junit)
