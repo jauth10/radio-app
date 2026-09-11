@@ -1,5 +1,6 @@
 package com.iu.radioapp.data.remote.s1playout
 
+import com.iu.radioapp.data.remote.FailureSwitch
 import com.iu.radioapp.domain.Failure
 import com.iu.radioapp.domain.Outcome
 import contract.s1playout.CurrentTrackDto
@@ -13,15 +14,31 @@ import kotlin.time.Instant
 /**
  * In-memory fake of [PlayoutDataSource] with fixed sample data.
  *
- * Set [nextFailure] before a call to make exactly that call fail with the
- * given class; it is consumed and reset to null right after being read.
+ * Set [nextFailure] (and optionally [failureRepeatCount]) before a call to make
+ * the next one, or the next N, fail with that class.
+ *
+ * [currentTrack] is a settable `var`, not fixed sample data returned as-is: a
+ * test can null it out to simulate a talk segment (204), or swap in a track
+ * with no host to exercise the unhosted-show case.
+ *
+ * [clock] defaults to [Clock.System] but can be replaced with a fixed clock in
+ * a test, since real time would otherwise make [loginHost]'s validUntil and
+ * comparisons against it non-reproducible.
  */
 @OptIn(ExperimentalTime::class)
-class FakePlayoutDataSource : PlayoutDataSource {
+class FakePlayoutDataSource(private val clock: Clock = Clock.System) : PlayoutDataSource {
 
-    var nextFailure: Failure? = null
+    private val failures = FailureSwitch()
 
-    private val currentTrack = CurrentTrackDto(
+    var nextFailure: Failure?
+        get() = failures.nextFailure
+        set(value) { failures.nextFailure = value }
+
+    var failureRepeatCount: Int
+        get() = failures.times
+        set(value) { failures.times = value }
+
+    var currentTrack: CurrentTrackDto? = CurrentTrackDto(
         trackId = "trk-1",
         artist = "The Fake Band",
         title = "Sample Song",
@@ -40,24 +57,25 @@ class FakePlayoutDataSource : PlayoutDataSource {
         HistoryEntryDto("trk-3", "Third Artist", "Third Song", null, Instant.parse("2026-08-28T09:40:00Z")),
     )
 
-    private fun consumeFailure(): Failure? = nextFailure.also { nextFailure = null }
-
-    override suspend fun getCurrentTrack(): Outcome<CurrentTrackDto> {
-        consumeFailure()?.let { return Outcome.Error(it) }
+    override suspend fun getCurrentTrack(): Outcome<CurrentTrackDto?> {
+        failures.consume()?.let { return Outcome.Error(it) }
         return Outcome.Success(currentTrack)
     }
 
     override suspend fun getHistory(limit: Int): Outcome<List<HistoryEntryDto>> {
-        consumeFailure()?.let { return Outcome.Error(it) }
+        failures.consume()?.let { return Outcome.Error(it) }
+        if (limit < 0) {
+            return Outcome.Error(Failure.Rejected(reason = "limit must not be negative", retryable = false))
+        }
         return Outcome.Success(history.take(limit))
     }
 
     override suspend fun loginHost(hostCode: String, deviceId: String): Outcome<HostLoginResponse> {
-        consumeFailure()?.let { return Outcome.Error(it) }
+        failures.consume()?.let { return Outcome.Error(it) }
         return Outcome.Success(
             HostLoginResponse(
                 sessionToken = "fake-session-$deviceId",
-                validUntil = Clock.System.now() + 1.hours,
+                validUntil = clock.now() + 1.hours,
                 hostId = "host-1",
                 hostName = "Alex Host",
             )

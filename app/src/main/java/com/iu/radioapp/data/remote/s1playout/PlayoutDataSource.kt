@@ -14,7 +14,11 @@ import contract.s1playout.HostLoginResponse
  */
 interface PlayoutDataSource {
 
-    suspend fun getCurrentTrack(): Outcome<CurrentTrackDto>
+    /**
+     * The track currently on air, or null if a talk segment is running instead
+     * of music (204 from the station - not a failure, just nothing to show).
+     */
+    suspend fun getCurrentTrack(): Outcome<CurrentTrackDto?>
 
     suspend fun getHistory(limit: Int): Outcome<List<HistoryEntryDto>>
 

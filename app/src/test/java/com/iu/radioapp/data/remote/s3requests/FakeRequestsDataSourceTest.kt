@@ -17,8 +17,8 @@ class FakeRequestsDataSourceTest {
 
     private val fake = FakeRequestsDataSource()
 
-    private fun sampleRequest(listenerId: String = "listener-1") = CreateSongRequestDto(
-        trackId = "trk-1",
+    private fun sampleRequest(listenerId: String = "listener-1", trackId: String = "trk-1") = CreateSongRequestDto(
+        trackId = trackId,
         listenerId = listenerId,
         displayName = "Test Listener",
         message = null,
@@ -48,6 +48,31 @@ class FakeRequestsDataSourceTest {
         assertEquals(first.requestId, second.requestId)
         val overview = (fake.getRequestsForListener("listener-1") as Outcome.Success).value
         assertEquals(1, overview.size)
+    }
+
+    @Test
+    fun `submitRequest rejects a non-broadcastable track`() = runTest {
+        val outcome = fake.submitRequest("key-x", sampleRequest(trackId = "trk-3"))
+        assertTrue((outcome as Outcome.Error).failure is Failure.Rejected)
+    }
+
+    @Test
+    fun `submitRequest rejects an unknown track`() = runTest {
+        val outcome = fake.submitRequest("key-y", sampleRequest(trackId = "trk-does-not-exist"))
+        assertTrue((outcome as Outcome.Error).failure is Failure.Rejected)
+    }
+
+    @Test
+    fun `pre-seeded requests are visible in decided states`() = runTest {
+        val accepted = (fake.getRequestStatus("req-seed-accepted") as Outcome.Success).value
+        assertEquals(RequestStatus.ACCEPTED, accepted.status)
+
+        val rejected = (fake.getRequestStatus("req-seed-rejected") as Outcome.Success).value
+        assertEquals(RequestStatus.REJECTED, rejected.status)
+        assertEquals("Titel nicht im Bestand", rejected.reason)
+
+        val overview = (fake.getRequestsForListener("listener-seed") as Outcome.Success).value
+        assertEquals(2, overview.size)
     }
 
     @Test
@@ -81,12 +106,22 @@ class FakeRequestsDataSourceTest {
     }
 
     @Test
-    fun `a failure is one-shot and does not affect the next call`() = runTest {
+    fun `a failure is one-shot by default and does not affect the next call`() = runTest {
         fake.nextFailure = Failure.Server
         fake.submitRequest("key-6", sampleRequest())
 
         val outcome = fake.submitRequest("key-7", sampleRequest())
         assertTrue(outcome is Outcome.Success)
+    }
+
+    @Test
+    fun `failureRepeatCount fails that many calls in a row, then succeeds`() = runTest {
+        fake.nextFailure = Failure.Server
+        fake.failureRepeatCount = 2
+
+        assertTrue(fake.submitRequest("key-8", sampleRequest()) is Outcome.Error)
+        assertTrue(fake.submitRequest("key-9", sampleRequest()) is Outcome.Error)
+        assertTrue(fake.submitRequest("key-10", sampleRequest()) is Outcome.Success)
     }
 
     @Test
