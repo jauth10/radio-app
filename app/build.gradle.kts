@@ -38,6 +38,12 @@ android {
     }
 }
 
+ksp {
+    // Room writes the schema of every version here. The JSON is committed so a
+    // later migration can be diffed against a recorded schema (decision E20).
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 kotlin {
     compilerOptions {
         // kotlin.time.Instant (stdlib) is still experimental; every domain field
