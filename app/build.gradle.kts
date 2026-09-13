@@ -47,6 +47,9 @@ kotlin {
 }
 
 dependencies {
+    // Shared DTOs and endpoint constants (RAD-3)
+    implementation(project(":contract"))
+
     // Compose
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.material3)
