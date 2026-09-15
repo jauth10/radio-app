@@ -12,6 +12,8 @@ import io.ktor.server.routing.routing
 import stubserver.common.installErrorHandling
 import stubserver.s1playout.playoutRoutes
 import stubserver.s2archive.archiveRoutes
+import stubserver.s3requests.requestsRoutes
+import stubserver.s4feedback.feedbackRoutes
 
 /**
  * Bound to all interfaces so the Android emulator's host alias (10.0.2.2)
@@ -34,5 +36,7 @@ fun Application.module() {
     routing {
         playoutRoutes()
         archiveRoutes()
+        requestsRoutes()
+        feedbackRoutes()
     }
 }
