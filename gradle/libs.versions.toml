@@ -1,8 +1,9 @@
 # Single source of truth for library and tooling versions (see CLAUDE.md).
 # No version numbers appear in any build.gradle.kts.
-# Ktor is deliberately absent: the network layer is RAD-14 (Fabian).
 
 [versions]
+ktor = "3.5.2"
+logback = "1.6.3"
 agp = "9.3.1"
 kotlin = "2.2.10"
 # KSP is pinned to the Kotlin version (<kotlin>-<ksp>) and must be bumped together with it.
@@ -66,6 +67,15 @@ androidx-work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx"
 kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutines" }
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "serialization" }
+
+# --- Stub server (RAD-12) ---
+ktor-server-core = { group = "io.ktor", name = "ktor-server-core", version.ref = "ktor" }
+ktor-server-netty = { group = "io.ktor", name = "ktor-server-netty", version.ref = "ktor" }
+ktor-server-content-negotiation = { group = "io.ktor", name = "ktor-server-content-negotiation", version.ref = "ktor" }
+ktor-serialization-kotlinx-json = { group = "io.ktor", name = "ktor-serialization-kotlinx-json", version.ref = "ktor" }
+ktor-server-status-pages = { group = "io.ktor", name = "ktor-server-status-pages", version.ref = "ktor" }
+ktor-server-call-logging = { group = "io.ktor", name = "ktor-server-call-logging", version.ref = "ktor" }
+logback-classic = { group = "ch.qos.logback", name = "logback-classic", version.ref = "logback" }
 
 # --- Testing ---
 junit = { group = "junit", name = "junit", version.ref = "junit" }
