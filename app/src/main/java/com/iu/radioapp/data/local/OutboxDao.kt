@@ -38,9 +38,10 @@ abstract class OutboxDao {
     @Query("SELECT * FROM outbox WHERE idempotency_key = :idempotencyKey")
     abstract suspend fun findByIdempotencyKey(idempotencyKey: String): OutboxEntity?
 
-    /** Everything the delivery worker still has to send, oldest first. */
-    @Query("SELECT * FROM outbox WHERE status = 'OPEN' ORDER BY id ASC")
-    abstract suspend fun openEntries(): List<OutboxEntity>
+    suspend fun openEntries(): List<OutboxEntity> = entriesWithStatus(DeliveryStatus.OPEN)
+
+    @Query("SELECT * FROM outbox WHERE status = :status ORDER BY id ASC")
+    protected abstract suspend fun entriesWithStatus(status: DeliveryStatus): List<OutboxEntity>
 
     /**
      * Records one unsuccessful attempt.
@@ -63,20 +64,29 @@ abstract class OutboxDao {
      * A business rejection. Terminal on purpose: a rejected write is never sent
      * again on its own, not even when the station reported retryable = true.
      */
-    @Query("UPDATE outbox SET status = 'REJECTED' WHERE id = :entryId")
-    abstract suspend fun markRejected(entryId: Long)
+    suspend fun markRejected(entryId: Long) = setStatus(entryId, DeliveryStatus.REJECTED)
+
 
     @Transaction
     open suspend fun bookDeliverySuccess(entryId: Long, request: SongRequestEntity) {
+        val entry = requireNotNull(findEntry(entryId)) {
+            "outbox entry $entryId does not exist"
+        }
+        require(entry.idempotencyKey == request.idempotencyKey) {
+            "outbox entry carries ${entry.idempotencyKey}, request is ${request.idempotencyKey}"
+        }
         setStatus(entryId, DeliveryStatus.DELIVERED)
-        updateRequest(request)
+        check(updateRequest(request) == 1) {
+            "no song_request row for ${request.idempotencyKey}"
+        }
     }
 
     @Query("UPDATE outbox SET status = :status WHERE id = :entryId")
     protected abstract suspend fun setStatus(entryId: Long, status: DeliveryStatus)
 
+    /** Returns the number of rows changed - zero means there was nothing to update. */
     @Update(onConflict = OnConflictStrategy.ABORT)
-    protected abstract suspend fun updateRequest(request: SongRequestEntity)
+    protected abstract suspend fun updateRequest(request: SongRequestEntity): Int
 
     @Query("DELETE FROM outbox")
     abstract suspend fun deleteAll()

@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import android.content.Context
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -22,14 +23,14 @@ import java.util.UUID
 class UserPreferencesDataSourceTest {
 
     private lateinit var storeFile: File
-    private lateinit var dataStore: DataStore<Preferences>
+    private lateinit var dataStore: CountingDataStore
     private lateinit var preferences: UserPreferencesDataSource
 
     @Before
     fun setUp() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         storeFile = File(context.cacheDir, "test-${UUID.randomUUID()}.preferences_pb")
-        dataStore = PreferenceDataStoreFactory.create { storeFile }
+        dataStore = CountingDataStore(PreferenceDataStoreFactory.create { storeFile })
         preferences = UserPreferencesDataSource(
             dataStore = dataStore,
             tokenCipher = KeystoreTokenCipher(keyAlias = "com.iu.radioapp.test.token"),
@@ -106,6 +107,25 @@ class UserPreferencesDataSourceTest {
         }
     }
 
+    /**
+     * Review finding from PR #5: the id used to be written through
+     * DataStore.edit on every single read, which pushed every lookup through the
+     * exclusive writer path. Counting the writes is the only way to state that
+     * as a test instead of as a claim - DataStore is an interface, so a thin
+     * wrapper can observe it.
+     */
+    @Test
+    fun readingTheListenerIdRepeatedlyWritesOnlyOnce() = runTest {
+        val first = preferences.requireListenerId()
+        val writesAfterFirstRead = dataStore.writes
+
+        repeat(4) { preferences.requireListenerId() }
+
+        assertEquals("creating the id is one write", 1, writesAfterFirstRead)
+        assertEquals("further reads must not write at all", 1, dataStore.writes)
+        assertEquals(first, preferences.requireListenerId())
+    }
+
     @Test
     fun endingTheHostSessionKeepsTheListenerIdentity() = runTest {
         val listenerId = preferences.listenerId.first()
@@ -117,5 +137,26 @@ class UserPreferencesDataSourceTest {
         assertNull(preferences.hostSessionToken.first())
         assertEquals(listenerId, preferences.listenerId.first())
         assertEquals("Jasper", preferences.displayName.first())
+    }
+
+    /**
+     * Passes everything through and counts the writes. [data] is delegated as a
+     * property getter so reads stay untouched.
+     */
+    private class CountingDataStore(
+        private val delegate: DataStore<Preferences>,
+    ) : DataStore<Preferences> {
+
+        var writes = 0
+            private set
+
+        override val data: Flow<Preferences> get() = delegate.data
+
+        override suspend fun updateData(
+            transform: suspend (Preferences) -> Preferences,
+        ): Preferences {
+            writes++
+            return delegate.updateData(transform)
+        }
     }
 }

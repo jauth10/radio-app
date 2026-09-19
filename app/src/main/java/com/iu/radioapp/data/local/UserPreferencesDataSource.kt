@@ -35,17 +35,25 @@ class UserPreferencesDataSource(
      * to survive every restart, which is why it is written the moment it is first
      * read instead of being generated per session.
      *
-     * Generating inside DataStore's edit block is what keeps it stable: edit
-     * serialises concurrent writes, so two collectors starting at the same moment
-     * cannot end up with two different ids.
+     * Generating inside DataStore's edit block is what keeps it stable: the
+     * "is it still missing?" check sits inside edit, which serialises concurrent
+     * writes, so two collectors starting at the same moment cannot end up with
+     * two different ids - even though both of them saw null a moment earlier.
      *
-     * The write happens before the store is collected, not inside the collector.
-     * Writing from within a data collector would mean a write waiting on a read
-     * of the same store, which is a deadlock waiting to be reproduced on a slow
-     * device.
+     * Read first, write only when there is nothing to read. DataStore's edit
+     * always takes the exclusive single-writer path, even when the lambda turns
+     * out to be a no-op - calling it on every read would serialise every single
+     * lookup of the id behind the write lock, and this id is needed for every
+     * song request and every rating.
+     *
+     * The write still happens before the store is collected, not inside the
+     * collector: a write waiting on a read of the same store is a deadlock
+     * waiting to be reproduced on a slow device.
      */
     val listenerId: Flow<String> = flow {
-        ensureListenerId()
+        if (dataStore.data.first()[KEY_LISTENER_ID] == null) {
+            ensureListenerId()
+        }
         emitAll(dataStore.data.mapNotNull { it[KEY_LISTENER_ID] }.distinctUntilChanged())
     }
 

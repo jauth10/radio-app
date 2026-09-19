@@ -84,6 +84,63 @@ class OutboxDaoTest {
         assertNull(songRequestDao.findRequest("key-1")?.requestId)
     }
 
+    /**
+     * Review finding from PR #5: Room's @Update matches by primary key only. A
+     * request whose row is gone updates zero rows and reports success, so
+     * without the check the entry would stay DELIVERED forever - unreachable for
+     * the worker, which only looks at OPEN entries.
+     */
+    @Test
+    fun bookingDeliverySuccessRollsBackWhenNoRequestRowExists() = runTest {
+        val entryId = outboxDao.insert(outboxEntity(idempotencyKey = "key-1"))
+        // No song_request row for key-1 at all.
+
+        var thrown: Throwable? = null
+        try {
+            outboxDao.bookDeliverySuccess(
+                entryId = entryId,
+                request = songRequestEntity(idempotencyKey = "key-1", requestId = "req-1"),
+            )
+        } catch (e: IllegalStateException) {
+            thrown = e
+        }
+
+        assertNotNull("updating a missing request row must not count as success", thrown)
+        assertEquals(DeliveryStatus.OPEN, outboxDao.findEntry(entryId)?.status)
+    }
+
+    /** An entry may only ever book the request it actually carries. */
+    @Test
+    fun bookingDeliverySuccessRejectsAMismatchedPair() = runTest {
+        songRequestDao.insert(songRequestEntity(idempotencyKey = "key-1"))
+        songRequestDao.insert(songRequestEntity(idempotencyKey = "key-2"))
+        val entryId = outboxDao.insert(outboxEntity(idempotencyKey = "key-1"))
+
+        var thrown: Throwable? = null
+        try {
+            outboxDao.bookDeliverySuccess(
+                entryId = entryId,
+                request = songRequestEntity(idempotencyKey = "key-2", requestId = "req-1"),
+            )
+        } catch (e: IllegalArgumentException) {
+            thrown = e
+        }
+
+        assertNotNull("the entry does not belong to that request", thrown)
+        assertEquals(DeliveryStatus.OPEN, outboxDao.findEntry(entryId)?.status)
+        assertNull(songRequestDao.findRequest("key-2")?.requestId)
+    }
+
+    @Test
+    fun markingAnEntryRejectedIsTerminal() = runTest {
+        val entryId = outboxDao.insert(outboxEntity(idempotencyKey = "key-1"))
+
+        outboxDao.markRejected(entryId)
+
+        assertEquals(DeliveryStatus.REJECTED, outboxDao.findEntry(entryId)?.status)
+        assertEquals(emptyList<String>(), outboxDao.openEntries().map { it.idempotencyKey })
+    }
+
     @Test
     fun recordingAnAttemptKeepsTheIdempotencyKeyAndCountsUp() = runTest {
         val entryId = outboxDao.insert(outboxEntity(idempotencyKey = "key-1"))
