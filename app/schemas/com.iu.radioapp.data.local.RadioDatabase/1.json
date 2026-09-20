@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 1,
-    "identityHash": "b5598b1f9b090ffa4cad14ecbb16b671",
+    "identityHash": "24fa95300dbc07390f15ac0c66b88440",
     "entities": [
       {
         "tableName": "track_cache",
@@ -125,7 +125,7 @@
       },
       {
         "tableName": "outbox",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `idempotency_key` TEXT NOT NULL, `operation` TEXT NOT NULL, `payload` TEXT NOT NULL, `attempts` INTEGER NOT NULL, `last_attempt_at` INTEGER, `status` TEXT NOT NULL)",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `idempotency_key` TEXT NOT NULL, `operation` TEXT NOT NULL, `payload` TEXT NOT NULL, `attempts` INTEGER NOT NULL, `last_attempt_at` INTEGER, `status` TEXT NOT NULL, `rejection_reason` TEXT)",
         "fields": [
           {
             "fieldPath": "id",
@@ -167,6 +167,11 @@
             "columnName": "status",
             "affinity": "TEXT",
             "notNull": true
+          },
+          {
+            "fieldPath": "rejectionReason",
+            "columnName": "rejection_reason",
+            "affinity": "TEXT"
           }
         ],
         "primaryKey": {
@@ -286,7 +291,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'b5598b1f9b090ffa4cad14ecbb16b671')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '24fa95300dbc07390f15ac0c66b88440')"
     ]
   }
 }

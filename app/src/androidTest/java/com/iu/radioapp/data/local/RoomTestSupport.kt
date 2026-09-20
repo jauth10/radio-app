@@ -64,13 +64,15 @@ internal fun outboxEntity(
     attempts: Int = 0,
     lastAttemptAt: Instant? = null,
     status: DeliveryStatus = DeliveryStatus.OPEN,
+    operation: OperationType = OperationType.SONG_REQUEST,
 ) = OutboxEntity(
     idempotencyKey = idempotencyKey,
-    operation = OperationType.SONG_REQUEST,
+    operation = operation,
     payload = """{"trackId":"trk-1"}""",
     attempts = attempts,
     lastAttemptAt = lastAttemptAt,
     status = status,
+    rejectionReason = null,
 )
 
 internal fun songRequestEntity(

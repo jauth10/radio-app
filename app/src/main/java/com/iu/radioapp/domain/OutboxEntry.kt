@@ -18,6 +18,10 @@ import kotlin.time.Instant
  * [lastAttemptAt] is null while no attempt has been made yet. After five failed
  * attempts the status becomes FAILED and the entry stays visible for a manual
  * retry - it is never dropped silently.
+ *
+ * [rejectionReason] is set exactly when the status is REJECTED. It is a property
+ * of the delivery attempt, which is why a rejected rating - that has no table of
+ * its own - can still show its reason. A FAILED entry carries none.
  */
 data class OutboxEntry(
     val id: Long,
@@ -27,4 +31,5 @@ data class OutboxEntry(
     val attempts: Int,
     val lastAttemptAt: Instant?,
     val status: DeliveryStatus,
+    val rejectionReason: String?,
 )

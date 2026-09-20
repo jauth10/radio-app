@@ -26,6 +26,12 @@ import kotlin.time.Instant
  * [status] is indexed because the delivery worker only ever asks for one value of
  * it ("everything still OPEN").
  *
+ * [rejectionReason] belongs to the same group as [status], [attempts] and
+ * [lastAttemptAt]: it describes the delivery attempt, not the song request or the
+ * rating. It holds business rejections only. The column is nullable because OPEN,
+ * DELIVERED and FAILED have no reason - FAILED in particular must not borrow it
+ * as a general error text.
+ *
  * The enums are stored by name through Room's built-in enum support, see
  * Converters.
  */
@@ -47,4 +53,6 @@ data class OutboxEntity(
     @ColumnInfo(name = "last_attempt_at")
     val lastAttemptAt: Instant?,
     val status: DeliveryStatus,
+    @ColumnInfo(name = "rejection_reason")
+    val rejectionReason: String?,
 )

@@ -9,6 +9,8 @@ import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
 import com.iu.radioapp.domain.DeliveryStatus
+import com.iu.radioapp.domain.OperationType
+import com.iu.radioapp.domain.RequestStatus
 import kotlinx.coroutines.flow.Flow
 import kotlin.time.ExperimentalTime
 import kotlin.time.Instant
@@ -60,18 +62,21 @@ abstract class OutboxDao {
         status: DeliveryStatus,
     )
 
-    /**
-     * A business rejection. Terminal on purpose: a rejected write is never sent
-     * again on its own, not even when the station reported retryable = true.
-     */
-    suspend fun markRejected(entryId: Long) = setStatus(entryId, DeliveryStatus.REJECTED)
+    @Transaction
+    open suspend fun enqueueSongRequest(entry: OutboxEntity, request: SongRequestEntity): Long {
+        requireOperation(entry, OperationType.SONG_REQUEST)
+        require(entry.idempotencyKey == request.idempotencyKey) {
+            "outbox entry carries ${entry.idempotencyKey}, request is ${request.idempotencyKey}"
+        }
+        insertRequest(request)
+        return insert(entry)
+    }
 
 
     @Transaction
     open suspend fun bookDeliverySuccess(entryId: Long, request: SongRequestEntity) {
-        val entry = requireNotNull(findEntry(entryId)) {
-            "outbox entry $entryId does not exist"
-        }
+        val entry = requireEntry(entryId)
+        requireOperation(entry, OperationType.SONG_REQUEST)
         require(entry.idempotencyKey == request.idempotencyKey) {
             "outbox entry carries ${entry.idempotencyKey}, request is ${request.idempotencyKey}"
         }
@@ -81,12 +86,63 @@ abstract class OutboxDao {
         }
     }
 
+    @Transaction
+    open suspend fun markDelivered(entryId: Long) {
+        requireOperation(requireEntry(entryId), OperationType.RATING)
+        setStatus(entryId, DeliveryStatus.DELIVERED)
+    }
+
+    @Transaction
+    open suspend fun bookRejection(entryId: Long, reason: String) {
+        val entry = requireEntry(entryId)
+        requireOperation(entry, OperationType.SONG_REQUEST)
+        setRejected(entryId, DeliveryStatus.REJECTED, reason)
+        check(rejectRequest(entry.idempotencyKey, RequestStatus.REJECTED, reason) == 1) {
+            "no song_request row for ${entry.idempotencyKey}"
+        }
+    }
+
+    @Transaction
+    open suspend fun markRejected(entryId: Long, reason: String) {
+        requireOperation(requireEntry(entryId), OperationType.RATING)
+        setRejected(entryId, DeliveryStatus.REJECTED, reason)
+    }
+
+    @Transaction
+    open suspend fun reopen(entryId: Long) {
+        val entry = requireEntry(entryId)
+        require(entry.status == DeliveryStatus.FAILED) {
+            "outbox entry $entryId is ${entry.status}, only FAILED can be reopened"
+        }
+        setStatus(entryId, DeliveryStatus.OPEN)
+    }
+
+    private suspend fun requireEntry(entryId: Long): OutboxEntity =
+        requireNotNull(findEntry(entryId)) { "outbox entry $entryId does not exist" }
+
+    private fun requireOperation(entry: OutboxEntity, expected: OperationType) =
+        require(entry.operation == expected) {
+            "outbox entry ${entry.idempotencyKey} is ${entry.operation}, expected $expected"
+        }
+
     @Query("UPDATE outbox SET status = :status WHERE id = :entryId")
     protected abstract suspend fun setStatus(entryId: Long, status: DeliveryStatus)
+
+    @Query("UPDATE outbox SET status = :status, rejection_reason = :reason WHERE id = :entryId")
+    protected abstract suspend fun setRejected(entryId: Long, status: DeliveryStatus, reason: String)
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    protected abstract suspend fun insertRequest(request: SongRequestEntity)
 
     /** Returns the number of rows changed - zero means there was nothing to update. */
     @Update(onConflict = OnConflictStrategy.ABORT)
     protected abstract suspend fun updateRequest(request: SongRequestEntity): Int
+
+    /** Returns the number of rows changed, like [updateRequest]. */
+    @Query(
+        "UPDATE song_request SET status = :status, rejection_reason = :reason WHERE idempotency_key = :idempotencyKey"
+    )
+    protected abstract suspend fun rejectRequest(idempotencyKey: String, status: RequestStatus, reason: String): Int
 
     @Query("DELETE FROM outbox")
     abstract suspend fun deleteAll()

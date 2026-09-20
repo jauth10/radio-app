@@ -20,6 +20,7 @@ fun OutboxEntity.toDomain(): OutboxEntry = OutboxEntry(
     attempts = attempts,
     lastAttemptAt = lastAttemptAt,
     status = status,
+    rejectionReason = rejectionReason,
 )
 
 fun OutboxEntry.toEntity(): OutboxEntity = OutboxEntity(
@@ -30,4 +31,5 @@ fun OutboxEntry.toEntity(): OutboxEntity = OutboxEntity(
     attempts = attempts,
     lastAttemptAt = lastAttemptAt,
     status = status,
+    rejectionReason = rejectionReason,
 )
