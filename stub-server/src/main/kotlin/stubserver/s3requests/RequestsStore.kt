@@ -52,15 +52,15 @@ object RequestsStore {
 
     private var nextRequestId = 1
 
-    fun submit(idempotencyKey: String, request: CreateSongRequestDto): SubmitResult {
+    fun submit(idempotencyKey: String, request: CreateSongRequestDto, receivedAt: Instant): SubmitResult {
         responsesByIdempotencyKey[idempotencyKey]?.let { return SubmitResult.Success(it) }
 
         val track = ArchiveStore.tracks.find { it.trackId == request.trackId }
         if (track == null || !track.broadcastable) {
-            return SubmitResult.Rejected("track not broadcastable: ${request.trackId}")
+            return SubmitResult.Rejected("Dieser Titel ist nicht sendefähig.")
         }
-        if (!limiter.tryConsume(request.listenerId, request.timestamp)) {
-            return SubmitResult.Rejected("hourly request limit reached for listener ${request.listenerId}")
+        if (!limiter.tryConsume(request.listenerId, receivedAt)) {
+            return SubmitResult.Rejected("Du hast in dieser Stunde bereits das Wunschlimit erreicht.")
         }
 
         val requestId = "req-${nextRequestId++}"

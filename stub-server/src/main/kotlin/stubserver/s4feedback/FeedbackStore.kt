@@ -9,7 +9,7 @@ import contract.s4feedback.TimeWindow
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
 import kotlin.time.Instant
-import stubserver.common.HourlyLimiter
+import stubserver.common.hourBucket
 
 /**
  * In-memory data and business rules for S4 - Feedback & listener research.
@@ -26,17 +26,32 @@ object FeedbackStore {
 
     sealed interface SubmitResult {
         data class Success(val response: RatingResponse) : SubmitResult
-        /** Bad value or limit reached - 422. */
+        /** Bad value - 422. */
         data class Invalid(val reason: String) : SubmitResult
-        /** Already rated - 409. */
+        /** Already rated this hour - 409. */
         data class Conflict(val reason: String) : SubmitResult
     }
 
     private data class SeededRating(val event: RatingEventDto, val referenceId: String)
 
-    private val limiter = HourlyLimiter()
+    /**
+     * One rating per listener, target, reference and broadcast hour. The hour
+     * is part of the key itself rather than a separate limiter: a rating for
+     * the same target in a later hour is a new, distinct submission, not a
+     * duplicate - so there is nothing else left to cap separately. Without the
+     * hour, the very first rating for a target would block every later one
+     * until the process restarts, and a demo with only one show/host pairing
+     * would never see anything but 409 after that.
+     */
+    private data class RatingConflictKey(
+        val listenerId: String,
+        val target: RatingTarget,
+        val referenceId: String,
+        val hour: Long,
+    )
+
     private val responsesByIdempotencyKey = mutableMapOf<String, RatingResponse>()
-    private val ratedByListenerAndTarget = mutableSetOf<Triple<String, RatingTarget, String>>()
+    private val ratedKeys = mutableSetOf<RatingConflictKey>()
 
     private val ratings = mutableListOf(
         SeededRating(
@@ -69,15 +84,17 @@ object FeedbackStore {
         responsesByIdempotencyKey[idempotencyKey]?.let { return SubmitResult.Success(it) }
 
         if (rating.value !in 1..5) {
-            return SubmitResult.Invalid("value must be 1..5")
+            return SubmitResult.Invalid("Die Bewertung muss zwischen 1 und 5 liegen.")
         }
 
-        val alreadyRatedKey = Triple(rating.listenerId, rating.target, rating.referenceId)
-        if (alreadyRatedKey in ratedByListenerAndTarget) {
-            return SubmitResult.Conflict("already rated")
-        }
-        if (!limiter.tryConsume(rating.listenerId, rating.timestamp)) {
-            return SubmitResult.Invalid("hourly rating limit reached for listener ${rating.listenerId}")
+        val conflictKey = RatingConflictKey(
+            listenerId = rating.listenerId,
+            target = rating.target,
+            referenceId = rating.referenceId,
+            hour = hourBucket(receivedAt),
+        )
+        if (conflictKey in ratedKeys) {
+            return SubmitResult.Conflict("Du hast dafür in dieser Stunde bereits eine Bewertung abgegeben.")
         }
 
         val ratingId = "rat-${nextRatingId++}"
@@ -94,7 +111,7 @@ object FeedbackStore {
                 referenceId = rating.referenceId,
             )
         )
-        ratedByListenerAndTarget += alreadyRatedKey
+        ratedKeys += conflictKey
         val response = RatingResponse(ratingId = ratingId)
         responsesByIdempotencyKey[idempotencyKey] = response
         return SubmitResult.Success(response)

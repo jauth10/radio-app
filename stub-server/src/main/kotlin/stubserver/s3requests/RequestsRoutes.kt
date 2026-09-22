@@ -9,8 +9,11 @@ import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
+import kotlin.time.Clock
+import kotlin.time.ExperimentalTime
 import stubserver.common.respondError
 
+@OptIn(ExperimentalTime::class)
 fun Route.requestsRoutes() {
 
     post(Endpoints.S3_REQUESTS) {
@@ -24,7 +27,7 @@ fun Route.requestsRoutes() {
             return@post
         }
         val request = call.receive<CreateSongRequestDto>()
-        when (val result = RequestsStore.submit(idempotencyKey, request)) {
+        when (val result = RequestsStore.submit(idempotencyKey, request, receivedAt = Clock.System.now())) {
             is RequestsStore.SubmitResult.Success ->
                 call.respond(HttpStatusCode.Created, result.response)
             is RequestsStore.SubmitResult.Rejected ->
