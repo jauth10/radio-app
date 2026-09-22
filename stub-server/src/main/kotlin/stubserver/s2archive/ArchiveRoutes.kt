@@ -10,10 +10,21 @@ import stubserver.common.respondError
 
 private const val DEFAULT_SEARCH_LIMIT = 20
 
+/** Assumption: below this length a search term is rejected rather than matching everything. */
+private const val MIN_QUERY_LENGTH = 2
+
 fun Route.archiveRoutes() {
 
     get(Endpoints.S2_TRACK_SEARCH) {
         val query = call.request.queryParameters[Endpoints.PARAM_Q] ?: ""
+        if (query.length < MIN_QUERY_LENGTH) {
+            call.respondError(
+                HttpStatusCode.BadRequest,
+                "${Endpoints.PARAM_Q} must be at least $MIN_QUERY_LENGTH characters",
+                retryable = false,
+            )
+            return@get
+        }
         val rawLimit = call.request.queryParameters[Endpoints.PARAM_LIMIT]
         val limit = if (rawLimit == null) {
             DEFAULT_SEARCH_LIMIT

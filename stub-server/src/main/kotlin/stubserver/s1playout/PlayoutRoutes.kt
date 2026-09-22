@@ -50,9 +50,15 @@ fun Route.playoutRoutes() {
         val request = call.receive<HostLoginRequest>()
         val host = PlayoutStore.findHost(request.hostCode)
         if (host == null) {
-            call.respondError(HttpStatusCode.Unauthorized, "invalid host code", retryable = false)
+            val lockedOut = PlayoutStore.recordFailedLogin(request.deviceId)
+            if (lockedOut) {
+                call.respondError(HttpStatusCode.TooManyRequests, "too many failed login attempts", retryable = true)
+            } else {
+                call.respondError(HttpStatusCode.Unauthorized, "invalid host code", retryable = false)
+            }
             return@post
         }
+        PlayoutStore.resetFailedLogins(request.deviceId)
         call.respond(
             HostLoginResponse(
                 sessionToken = PlayoutStore.issueSessionToken(),

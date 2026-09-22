@@ -47,4 +47,23 @@ object PlayoutStore {
     fun findHost(hostCode: String): HostCredential? = hostCodes.find { it.hostCode == hostCode }
 
     fun issueSessionToken(): String = "session-${UUID.randomUUID()}"
+
+    /**
+     * Assumption (not stated in the ticket or the interface table): five failed
+     * login attempts locks a device out with 429 until a correct code resets it.
+     */
+    private const val MAX_LOGIN_ATTEMPTS = 5
+
+    private val failedLoginAttempts = mutableMapOf<String, Int>()
+
+    /** Records one failed attempt and reports whether [deviceId] is now locked out. */
+    fun recordFailedLogin(deviceId: String): Boolean {
+        val attempts = (failedLoginAttempts[deviceId] ?: 0) + 1
+        failedLoginAttempts[deviceId] = attempts
+        return attempts >= MAX_LOGIN_ATTEMPTS
+    }
+
+    fun resetFailedLogins(deviceId: String) {
+        failedLoginAttempts.remove(deviceId)
+    }
 }
