@@ -5,7 +5,6 @@ import com.iu.radioapp.data.local.OutboxEntity
 import com.iu.radioapp.data.local.toDomain
 import com.iu.radioapp.data.remote.s4feedback.FeedbackDataSource
 import com.iu.radioapp.domain.DeliveryStatus
-import com.iu.radioapp.domain.Failure
 import com.iu.radioapp.domain.OperationType
 import com.iu.radioapp.domain.Outcome
 import com.iu.radioapp.domain.OutboxEntry
@@ -44,27 +43,15 @@ class RatingRepository @Inject constructor(
         return Outcome.Success(Unit)
     }
 
-    /** Returns the first technical failure, so the worker knows a retry is due. */
-    suspend fun deliverOpen(): Outcome<Unit> {
-        var technicalFailure: Failure? = null
-        for (entry in outboxDao.openEntries().filter { it.operation == OperationType.RATING }) {
-            val dto = RadioJson.decodeFromString<RatingRequest>(entry.payload)
-            when (val outcome = feedback.submitRating(entry.idempotencyKey, dto)) {
-                is Outcome.Success -> outboxDao.markDelivered(entry.id)
-                is Outcome.Error -> when (val failure = outcome.failure) {
-                    // Never re-sent on its own, whatever retryable says.
-                    is Failure.Rejected -> outboxDao.markRejected(entry.id, failure.reason)
-                    else -> {
-                        outboxDao.recordFailedAttempt(entry, clock.now())
-                        technicalFailure = technicalFailure ?: failure
-                    }
-                }
-            }
-            // Without a connection the remaining entries would only burn attempts.
-            if (technicalFailure is Failure.Connection) break
-        }
-        return technicalFailure?.let { Outcome.Error(it) } ?: Outcome.Success(Unit)
-    }
+    suspend fun deliverOpen(): Outcome<Unit> = outboxDao.deliverOpenEntries(
+        operation = OperationType.RATING,
+        clock = clock,
+        send = { entry ->
+            feedback.submitRating(entry.idempotencyKey, RadioJson.decodeFromString<RatingRequest>(entry.payload))
+        },
+        onDelivered = { entry, _ -> outboxDao.markDelivered(entry.id) },
+        onRejected = { entry, reason -> outboxDao.markRejected(entry.id, reason) },
+    )
 
     suspend fun retry(idempotencyKey: String): Outcome<Unit> {
         outboxDao.reopenIfFailed(idempotencyKey)

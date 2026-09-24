@@ -7,7 +7,6 @@ import com.iu.radioapp.data.local.toDomain
 import com.iu.radioapp.data.local.toEntity
 import com.iu.radioapp.data.remote.s3requests.RequestsDataSource
 import com.iu.radioapp.domain.DeliveryStatus
-import com.iu.radioapp.domain.Failure
 import com.iu.radioapp.domain.OperationType
 import com.iu.radioapp.domain.Outcome
 import com.iu.radioapp.domain.OutboxEntry
@@ -43,37 +42,25 @@ class SongRequestRepository @Inject constructor(
         return Outcome.Success(Unit)
     }
 
-    /** Returns the first technical failure, so the worker knows a retry is due. */
-    suspend fun deliverOpen(): Outcome<Unit> {
-        var technicalFailure: Failure? = null
-        for (entry in outboxDao.openEntries().filter { it.operation == OperationType.SONG_REQUEST }) {
-            val dto = RadioJson.decodeFromString<CreateSongRequestDto>(entry.payload)
-            when (val outcome = requests.submitRequest(entry.idempotencyKey, dto)) {
-                is Outcome.Success -> {
-                    val row = checkNotNull(songRequestDao.findRequest(entry.idempotencyKey))
-                    outboxDao.bookDeliverySuccess(
-                        entryId = entry.id,
-                        request = row.copy(
-                            requestId = outcome.value.requestId,
-                            status = outcome.value.status.toDomain(),
-                            scheduledBroadcast = outcome.value.scheduledBroadcast,
-                        ),
-                    )
-                }
-                is Outcome.Error -> when (val failure = outcome.failure) {
-                    // Never re-sent on its own, whatever retryable says.
-                    is Failure.Rejected -> outboxDao.bookRejection(entry.id, failure.reason)
-                    else -> {
-                        outboxDao.recordFailedAttempt(entry, clock.now())
-                        technicalFailure = technicalFailure ?: failure
-                    }
-                }
-            }
-            // Without a connection the remaining entries would only burn attempts.
-            if (technicalFailure is Failure.Connection) break
-        }
-        return technicalFailure?.let { Outcome.Error(it) } ?: Outcome.Success(Unit)
-    }
+    suspend fun deliverOpen(): Outcome<Unit> = outboxDao.deliverOpenEntries(
+        operation = OperationType.SONG_REQUEST,
+        clock = clock,
+        send = { entry ->
+            requests.submitRequest(entry.idempotencyKey, RadioJson.decodeFromString<CreateSongRequestDto>(entry.payload))
+        },
+        onDelivered = { entry, response ->
+            val row = checkNotNull(songRequestDao.findRequest(entry.idempotencyKey))
+            outboxDao.bookDeliverySuccess(
+                entryId = entry.id,
+                request = row.copy(
+                    requestId = response.requestId,
+                    status = response.status.toDomain(),
+                    scheduledBroadcast = response.scheduledBroadcast,
+                ),
+            )
+        },
+        onRejected = { entry, reason -> outboxDao.bookRejection(entry.id, reason) },
+    )
 
     suspend fun retry(idempotencyKey: String): Outcome<Unit> {
         outboxDao.reopenIfFailed(idempotencyKey)
