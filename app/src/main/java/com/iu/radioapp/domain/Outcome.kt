@@ -20,3 +20,8 @@ sealed interface Outcome<out T> {
     /** The operation failed with [failure]. */
     data class Error(val failure: Failure) : Outcome<Nothing>
 }
+
+inline fun <T, R> Outcome<T>.map(transform: (T) -> R): Outcome<R> = when (this) {
+    is Outcome.Success -> Outcome.Success(transform(value))
+    is Outcome.Error -> this
+}
