@@ -20,6 +20,12 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // 10.0.2.2 is the Android emulator's alias for the host machine, where
+        // the stub server (RAD-12/13) listens on 0.0.0.0:8080. Overridable per
+        // build type/flavor for a physical device or a different host - see the
+        // startup guide (RAD-21).
+        buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:8080/\"")
     }
 
     buildTypes {
@@ -35,6 +41,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -85,6 +92,12 @@ dependencies {
 
     // Background delivery
     implementation(libs.androidx.work.runtime.ktx)
+
+    // HTTP client against S1-S4 (RAD-14)
+    implementation(libs.ktor.client.core)
+    implementation(libs.ktor.client.okhttp)
+    implementation(libs.ktor.client.content.negotiation)
+    implementation(libs.ktor.serialization.kotlinx.json)
 
     // Kotlin libraries
     implementation(libs.kotlinx.coroutines.core)
