@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Cleartext HTTP is allowed for the emulator's host alias only - the stub
+    server (RAD-12/13) is plain HTTP for local development, everything else
+    keeps the platform default (HTTPS only, system trust anchors).
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">10.0.2.2</domain>
+    </domain-config>
+</network-security-config>
