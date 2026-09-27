@@ -2,10 +2,13 @@ package com.iu.radioapp.interactor
 
 import com.iu.radioapp.domain.Failure
 import com.iu.radioapp.domain.Outcome
+import com.iu.radioapp.repository.TEST_NOW
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 
 class HostInteractorTest {
 
@@ -64,6 +67,26 @@ class HostInteractorTest {
 
     @Test
     fun `offline without a cached show is passed on as connection failure`() = runTest {
+        fixture.playout.nextFailure = Failure.Connection
+
+        assertEquals(Outcome.Error(Failure.Connection), interactor.getCurrentAggregate())
+    }
+
+    @Test
+    fun `aggregate from a fresh cache is still read`() = runTest {
+        interactor.getCurrentAggregate()
+        fixture.clock.instant = TEST_NOW + 4.minutes + 59.seconds
+        fixture.playout.nextFailure = Failure.Connection
+
+        val aggregate = checkNotNull((interactor.getCurrentAggregate() as Outcome.Success).value)
+
+        assertEquals(1, aggregate.playlistRatingCount)
+    }
+
+    @Test
+    fun `aggregate is not read from a stale cache`() = runTest {
+        interactor.getCurrentAggregate()
+        fixture.clock.instant = TEST_NOW + 5.minutes + 1.seconds
         fixture.playout.nextFailure = Failure.Connection
 
         assertEquals(Outcome.Error(Failure.Connection), interactor.getCurrentAggregate())

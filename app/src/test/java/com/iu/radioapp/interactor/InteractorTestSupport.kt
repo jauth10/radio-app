@@ -54,7 +54,7 @@ class InteractorFixture {
     val songRequestInteractor =
         SongRequestInteractor(archiveRepository, songRequestRepository, listenerRepository, scheduler, clock)
     val ratingInteractor = RatingInteractor(trackRepository, ratingRepository, listenerRepository, scheduler, clock)
-    val hostInteractor = HostInteractor(hostRepository, listenerRepository, trackRepository, ratingRepository)
+    val hostInteractor = HostInteractor(hostRepository, listenerRepository, trackRepository, ratingRepository, clock)
 }
 
 fun track(trackId: String = "trk-1", broadcastable: Boolean? = null) = Track(

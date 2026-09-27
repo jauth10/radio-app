@@ -14,4 +14,5 @@ enum class RefusalReason {
     TRACK_NOT_BROADCASTABLE,
     NO_SHOW_ON_AIR,
     HOST_UNKNOWN,
+    CONTEXT_STALE,
 }

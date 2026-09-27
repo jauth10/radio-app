@@ -13,8 +13,6 @@ import com.iu.radioapp.repository.TrackRepository
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
 import kotlin.time.Clock
-import kotlin.time.Duration
-import kotlin.time.Duration.Companion.minutes
 
 class TrackInteractor @Inject constructor(
     private val tracks: TrackRepository,
@@ -37,14 +35,12 @@ class TrackInteractor @Inject constructor(
         is ReadResult.Cached -> NowPlayingState.Cached(
             nowPlaying = checkNotNull(value) { "a cached playback always carries a track" },
             fetchedAt = fetchedAt,
-            isStale = clock.now() - fetchedAt > STALE_AFTER,
+            isStale = isStale(clock.now()),
             cause = cause,
         )
     }
 
     companion object {
-        val STALE_AFTER: Duration = 5.minutes
-
         // Same cap as PlaybackHistoryDao.
         const val HISTORY_LIMIT = 50
     }

@@ -8,13 +8,18 @@ import com.iu.radioapp.domain.RatingContext
 import com.iu.radioapp.domain.RatingTarget
 import com.iu.radioapp.domain.RefusalReason
 import com.iu.radioapp.domain.Submission
+import com.iu.radioapp.repository.TEST_NOW
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 
 class RatingInteractorTest {
 
@@ -30,6 +35,13 @@ class RatingInteractorTest {
         (interactor.submitRating(target, value, comment = null) as Submission.Queued).value
 
     private suspend fun deliveries() = interactor.observeDeliveries().first()
+
+    private suspend fun cachedContextAfter(age: Duration): RatingContext {
+        context()
+        fixture.clock.instant = TEST_NOW + age
+        playout.nextFailure = Failure.Connection
+        return checkNotNull(context())
+    }
 
     @Test
     fun `context carries show and host while a hosted track is live`() = runTest {
@@ -48,6 +60,32 @@ class RatingInteractorTest {
 
         assertEquals("show-1", context.show.showId)
         assertNull(context.host)
+        assertFalse(context.isStale)
+    }
+
+    @Test
+    fun `context from a cache just under five minutes old is not stale`() = runTest {
+        assertFalse(cachedContextAfter(4.minutes + 59.seconds).isStale)
+    }
+
+    @Test
+    fun `context from a cache over five minutes old is stale`() = runTest {
+        val context = cachedContextAfter(5.minutes + 1.seconds)
+
+        assertTrue(context.isStale)
+        assertEquals("show-1", context.show.showId)
+    }
+
+    @Test
+    fun `rating on a stale cached context is refused`() = runTest {
+        cachedContextAfter(5.minutes + 1.seconds)
+        playout.nextFailure = Failure.Connection
+
+        val result = interactor.submitRating(RatingTarget.PLAYLIST, 4, comment = null)
+
+        assertEquals(Submission.Refused(RefusalReason.CONTEXT_STALE), result)
+        assertTrue(deliveries().isEmpty())
+        assertEquals(0, scheduler.calls)
     }
 
     @Test

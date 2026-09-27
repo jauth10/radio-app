@@ -27,7 +27,9 @@ class RatingInteractor @Inject constructor(
     // Null during a talk segment: S1 names no show then.
     suspend fun getRatingContext(): Outcome<RatingContext?> =
         tracks.getCurrentPlayback().map { result ->
-            result.value?.show?.let { show -> RatingContext(show = show, host = show.host) }
+            result.value?.show?.let { show ->
+                RatingContext(show = show, host = show.host, isStale = result.isStale(clock.now()))
+            }
         }
 
     suspend fun submitRating(target: RatingTarget, value: Int, comment: String?): Submission<Rating> {
@@ -36,6 +38,8 @@ class RatingInteractor @Inject constructor(
             is Outcome.Success -> outcome.value ?: return Submission.Refused(RefusalReason.NO_SHOW_ON_AIR)
             is Outcome.Error -> return Submission.Failed(outcome.failure)
         }
+        // A cache older than five minutes may still name the previous show.
+        if (context.isStale) return Submission.Refused(RefusalReason.CONTEXT_STALE)
         val referenceId = when (target) {
             RatingTarget.PLAYLIST -> context.show.showId
             RatingTarget.HOST -> context.host?.hostId ?: return Submission.Refused(RefusalReason.HOST_UNKNOWN)

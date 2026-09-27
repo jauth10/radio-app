@@ -9,12 +9,14 @@ import com.iu.radioapp.repository.RatingRepository
 import com.iu.radioapp.repository.TrackRepository
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
+import kotlin.time.Clock
 
 class HostInteractor @Inject constructor(
     private val hosts: HostRepository,
     private val listeners: ListenerRepository,
     private val tracks: TrackRepository,
     private val ratings: RatingRepository,
+    private val clock: Clock,
 ) {
 
     // The listener id doubles as device id.
@@ -30,7 +32,11 @@ class HostInteractor @Inject constructor(
     // Null during a talk segment: no show, no aggregate.
     suspend fun getCurrentAggregate(): Outcome<RatingAggregate?> {
         val showId = when (val outcome = tracks.getCurrentPlayback()) {
-            is Outcome.Success -> outcome.value.value?.show?.showId ?: return Outcome.Success(null)
+            is Outcome.Success -> {
+                // A stale cache may still name the previous show; no numbers beat the wrong ones.
+                outcome.value.staleCause(clock.now())?.let { return Outcome.Error(it) }
+                outcome.value.value?.show?.showId ?: return Outcome.Success(null)
+            }
             is Outcome.Error -> return outcome
         }
         return ratings.getAggregate(showId)
