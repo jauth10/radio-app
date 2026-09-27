@@ -5,6 +5,7 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
+import kotlin.time.Clock
 
 /**
  * Application-wide Hilt module. Intentionally empty apart from [ScaffoldMarker],
@@ -19,4 +20,8 @@ object AppModule {
     @Singleton
     fun provideScaffoldMarker(): ScaffoldMarker =
         ScaffoldMarker("Hilt-Injektion aktiv")
+
+    @Provides
+    @Singleton
+    fun provideClock(): Clock = Clock.System
 }
