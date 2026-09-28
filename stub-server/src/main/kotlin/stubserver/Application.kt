@@ -9,10 +9,12 @@ import io.ktor.server.netty.Netty
 import io.ktor.server.plugins.calllogging.CallLogging
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.routing.routing
+import io.ktor.server.websocket.WebSockets
 import stubserver.common.installErrorHandling
 import stubserver.s1playout.playoutRoutes
 import stubserver.s2archive.archiveRoutes
 import stubserver.s3requests.requestsRoutes
+import stubserver.s4feedback.eventsRoutes
 import stubserver.s4feedback.feedbackRoutes
 
 /**
@@ -31,6 +33,7 @@ fun Application.module() {
         json(RadioJson)
     }
     install(CallLogging)
+    install(WebSockets)
     installErrorHandling()
 
     routing {
@@ -38,5 +41,6 @@ fun Application.module() {
         archiveRoutes()
         requestsRoutes()
         feedbackRoutes()
+        eventsRoutes()
     }
 }

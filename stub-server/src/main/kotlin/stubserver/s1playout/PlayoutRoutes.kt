@@ -61,7 +61,7 @@ fun Route.playoutRoutes() {
         PlayoutStore.resetFailedLogins(request.deviceId)
         call.respond(
             HostLoginResponse(
-                sessionToken = PlayoutStore.issueSessionToken(),
+                sessionToken = PlayoutStore.issueSessionToken(host.hostId),
                 validUntil = Clock.System.now() + 1.hours,
                 hostId = host.hostId,
                 hostName = host.hostName,

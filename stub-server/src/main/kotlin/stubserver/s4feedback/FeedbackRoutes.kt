@@ -13,6 +13,7 @@ import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
 import kotlin.time.Instant
 import stubserver.common.respondError
+import stubserver.s1playout.PlayoutStore
 
 @OptIn(ExperimentalTime::class)
 fun Route.feedbackRoutes() {
@@ -29,8 +30,14 @@ fun Route.feedbackRoutes() {
         }
         val rating = call.receive<RatingRequest>()
         when (val result = FeedbackStore.submit(idempotencyKey, rating, receivedAt = Clock.System.now())) {
-            is FeedbackStore.SubmitResult.Success ->
+            is FeedbackStore.SubmitResult.Success -> {
                 call.respond(HttpStatusCode.Created, result.response)
+                val event = result.event
+                val aggregate = result.aggregate
+                if (event != null && aggregate != null) {
+                    RatingEventBroadcaster.broadcastNewRating(event, aggregate, t0 = Clock.System.now())
+                }
+            }
             is FeedbackStore.SubmitResult.Invalid ->
                 call.respondError(HttpStatusCode.UnprocessableEntity, result.reason, retryable = false)
             is FeedbackStore.SubmitResult.Conflict ->
@@ -48,6 +55,12 @@ fun Route.feedbackRoutes() {
     }
 
     get(Endpoints.S4_RATINGS_SINCE) {
+        val authHeader = call.request.headers[Endpoints.HEADER_AUTH]
+        val token = authHeader?.takeIf { it.startsWith("Bearer ") }?.removePrefix("Bearer ")
+        if (token == null || PlayoutStore.hostIdForToken(token) == null) {
+            call.respondError(HttpStatusCode.Unauthorized, "invalid or missing token", retryable = false)
+            return@get
+        }
         val showId = call.request.queryParameters[Endpoints.PARAM_SHOW_ID]
         if (showId.isNullOrBlank()) {
             call.respondError(HttpStatusCode.BadRequest, "${Endpoints.PARAM_SHOW_ID} is required", retryable = false)

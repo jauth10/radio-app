@@ -46,7 +46,22 @@ object PlayoutStore {
 
     fun findHost(hostCode: String): HostCredential? = hostCodes.find { it.hostCode == hostCode }
 
-    fun issueSessionToken(): String = "session-${UUID.randomUUID()}"
+    /**
+     * Token -> hostId. RAD-12 issued tokens without keeping them anywhere,
+     * which meant nothing could ever validate one - the gap RAD-14's review
+     * flagged for GET /ratings and RAD-15's own WS token check both need
+     * closed. No expiry is enforced here; the stub only tracks "was this ever
+     * issued", matching the rest of this store's fixed, no-real-time-limits style.
+     */
+    private val issuedSessions = mutableMapOf<String, String>()
+
+    fun issueSessionToken(hostId: String): String {
+        val token = "session-${UUID.randomUUID()}"
+        issuedSessions[token] = hostId
+        return token
+    }
+
+    fun hostIdForToken(token: String): String? = issuedSessions[token]
 
     /**
      * Assumption (not stated in the ticket or the interface table): five failed
