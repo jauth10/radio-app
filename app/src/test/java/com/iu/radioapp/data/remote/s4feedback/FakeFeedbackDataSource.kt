@@ -142,7 +142,7 @@ class FakeFeedbackDataSource(private val clock: Clock = Clock.System) : Feedback
         )
     }
 
-    override suspend fun getRatingsSince(since: Instant, showId: String): Outcome<List<RatingEventDto>> {
+    override suspend fun getRatingsSince(since: Instant, showId: String, token: String): Outcome<List<RatingEventDto>> {
         failures.consume()?.let { return Outcome.Error(it) }
         if (showId != SEEDED_SHOW_ID) return Outcome.Success(emptyList())
         return Outcome.Success(

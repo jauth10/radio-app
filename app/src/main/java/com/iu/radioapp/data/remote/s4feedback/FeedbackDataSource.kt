@@ -12,7 +12,9 @@ import kotlin.time.Instant
  * format.
  *
  * [getRatingsSince] is the polling fallback for the WebSocket channel (RAD-15);
- * it is not itself a WebSocket client.
+ * it is not itself a WebSocket client. It requires [token] - the moderation
+ * host session token - since it is a moderation-side read (same as the WS
+ * channel it falls back for, per the interface table), never a listener one.
  */
 interface FeedbackDataSource {
 
@@ -20,5 +22,5 @@ interface FeedbackDataSource {
 
     suspend fun getAggregate(showId: String): Outcome<AggregateDto>
 
-    suspend fun getRatingsSince(since: Instant, showId: String): Outcome<List<RatingEventDto>>
+    suspend fun getRatingsSince(since: Instant, showId: String, token: String): Outcome<List<RatingEventDto>>
 }

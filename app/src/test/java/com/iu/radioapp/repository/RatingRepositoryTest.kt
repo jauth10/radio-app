@@ -3,6 +3,7 @@ package com.iu.radioapp.repository
 import com.iu.radioapp.data.local.FakeOutboxDao
 import com.iu.radioapp.data.local.InMemoryLocalStore
 import com.iu.radioapp.data.local.OutboxEntity
+import com.iu.radioapp.data.local.inMemoryUserPreferences
 import com.iu.radioapp.data.remote.s4feedback.FakeFeedbackDataSource
 import com.iu.radioapp.domain.DeliveryStatus
 import com.iu.radioapp.domain.Failure
@@ -23,7 +24,8 @@ class RatingRepositoryTest {
     private val feedback = FakeFeedbackDataSource(clock)
     private val store = InMemoryLocalStore()
     private val outboxDao = FakeOutboxDao(store)
-    private val repository = RatingRepository(feedback, outboxDao, clock)
+    private val preferences = inMemoryUserPreferences()
+    private val repository = RatingRepository(feedback, outboxDao, preferences, clock)
 
     private suspend fun entry(key: String = "key-1") = outboxDao.findByIdempotencyKey(key)
 
@@ -135,6 +137,8 @@ class RatingRepositoryTest {
 
     @Test
     fun `getRatingsSince maps the events`() = runTest {
+        preferences.setHostSessionToken("session-1")
+
         val events = (repository.getRatingsSince(Instant.parse("2026-08-28T09:15:00Z"), "show-1") as Outcome.Success).value
 
         assertEquals(listOf("rat-2"), events.map { it.ratingId })
@@ -143,8 +147,14 @@ class RatingRepositoryTest {
 
     @Test
     fun `getRatingsSince passes a connection failure on`() = runTest {
+        preferences.setHostSessionToken("session-1")
         feedback.nextFailure = Failure.Connection
 
         assertEquals(Outcome.Error(Failure.Connection), repository.getRatingsSince(TEST_NOW, "show-1"))
+    }
+
+    @Test
+    fun `getRatingsSince without a host session is unauthorized`() = runTest {
+        assertEquals(Outcome.Error(Failure.Unauthorized), repository.getRatingsSince(TEST_NOW, "show-1"))
     }
 }

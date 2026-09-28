@@ -99,6 +99,9 @@ dependencies {
     implementation(libs.ktor.client.content.negotiation)
     implementation(libs.ktor.serialization.kotlinx.json)
 
+    // WebSocket channel (RAD-15)
+    implementation(libs.ktor.client.websockets)
+
     // Kotlin libraries
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.coroutines.android)
@@ -109,6 +112,12 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.turbine)
     testImplementation(libs.ktor.client.mock)
+    // Real WS server to test RatingWebSocketClient against - MockEngine has no
+    // WebSocket support (KTOR-537), a real (if throwaway, in-process) one is
+    // the only way to test a dropped/reconnecting connection.
+    testImplementation(libs.ktor.server.core)
+    testImplementation(libs.ktor.server.netty)
+    testImplementation(libs.ktor.server.websockets)
 
     // Instrumented tests
     androidTestImplementation(platform(libs.androidx.compose.bom))

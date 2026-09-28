@@ -18,6 +18,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.defaultRequest
+import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.request.url
 import io.ktor.serialization.kotlinx.json.json
 import javax.inject.Singleton
@@ -25,6 +26,11 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 internal object RemoteDataModule {
+
+    @Provides
+    @Singleton
+    @ApiBaseUrl
+    fun provideApiBaseUrl(): String = BuildConfig.API_BASE_URL
 
     @Provides
     @Singleton
@@ -36,6 +42,7 @@ internal object RemoteDataModule {
         install(ContentNegotiation) {
             json(RadioJson)
         }
+        install(WebSockets)
         defaultRequest {
             url(BuildConfig.API_BASE_URL)
         }
