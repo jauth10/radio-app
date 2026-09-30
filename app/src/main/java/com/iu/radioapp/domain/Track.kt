@@ -17,3 +17,14 @@ data class Track(
     val durationSeconds: Int?,
     val broadcastable: Boolean?,
 )
+
+/** Merges the S1 and S2 views of the same track; known values win. */
+fun Track.completedWith(other: Track): Track {
+    require(other.trackId == trackId) { "cannot complete $trackId with ${other.trackId}" }
+    return copy(
+        album = album ?: other.album,
+        coverUrl = coverUrl ?: other.coverUrl,
+        durationSeconds = durationSeconds ?: other.durationSeconds,
+        broadcastable = broadcastable ?: other.broadcastable,
+    )
+}
