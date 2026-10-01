@@ -46,7 +46,7 @@ class InteractorFixture {
     val trackRepository = TrackRepository(playout, trackCacheDao, historyDao, clock)
     val archiveRepository = ArchiveRepository(archive)
     val songRequestRepository = SongRequestRepository(requests, outboxDao, songRequestDao, clock)
-    val ratingRepository = RatingRepository(feedback, outboxDao, clock)
+    val ratingRepository = RatingRepository(feedback, outboxDao, preferences, clock)
     val hostRepository = HostRepository(playout, preferences)
     val listenerRepository = ListenerRepository(preferences)
 
