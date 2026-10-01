@@ -9,6 +9,8 @@ import com.iu.radioapp.data.remote.s3requests.HttpRequestsDataSource
 import com.iu.radioapp.data.remote.s3requests.RequestsDataSource
 import com.iu.radioapp.data.remote.s4feedback.FeedbackDataSource
 import com.iu.radioapp.data.remote.s4feedback.HttpFeedbackDataSource
+import com.iu.radioapp.data.remote.s4feedback.RatingEventDataSource
+import com.iu.radioapp.data.remote.s4feedback.RatingWebSocketClient
 import contract.common.RadioJson
 import dagger.Module
 import dagger.Provides
@@ -63,4 +65,11 @@ internal object RemoteDataModule {
     @Provides
     @Singleton
     fun provideFeedbackDataSource(client: HttpClient): FeedbackDataSource = HttpFeedbackDataSource(client)
+
+    @Provides
+    @Singleton
+    fun provideRatingEventDataSource(
+        client: HttpClient,
+        @ApiBaseUrl baseUrl: String,
+    ): RatingEventDataSource = RatingWebSocketClient(client, baseUrl)
 }

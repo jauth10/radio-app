@@ -65,7 +65,7 @@ class FakeFeedbackDataSourceTest {
     @Test
     fun `getRatingsSince only returns ratings received after the given instant`() = runTest {
         val since = Instant.parse("2026-08-28T09:15:00Z")
-        val outcome = fake.getRatingsSince(since, FakeFeedbackDataSource.SEEDED_SHOW_ID) as Outcome.Success
+        val outcome = fake.getRatingsSince(since, FakeFeedbackDataSource.SEEDED_SHOW_ID, token = "irrelevant") as Outcome.Success
         assertEquals(1, outcome.value.size)
         assertEquals("rat-2", outcome.value.first().ratingId)
     }

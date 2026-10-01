@@ -1,5 +1,6 @@
 package com.iu.radioapp.data.remote.s4feedback
 
+import com.iu.radioapp.domain.Failure
 import contract.common.RadioJson
 import contract.s4feedback.EventType
 import contract.s4feedback.RatingEventDto
@@ -30,15 +31,19 @@ import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.ExperimentalTime
 
 /**
- * Review finding this pre-empts: RAD-15's reconnect/backoff logic is the
- * trickiest new code in the ticket, so it gets its own test rather than
- * relying only on the manual verification done while writing it (see commit
- * history). MockEngine cannot help here - it has no WebSocket support
- * (KTOR-537) - so this spins up a real, throwaway, in-process server instead.
+ * Review findings this pre-empts (RAD-15 PR #12, jauth10):
+ *  - A server that accepts the handshake and then immediately closes (the
+ *    stub does exactly this for a rejected token, see EventsRoutes) must not
+ *    reset the reconnect counter on handshake alone, or Failed never fires.
+ *  - A rejected token (VIOLATED_POLICY) must fail immediately as
+ *    Unauthorized, not spend the five-attempt retry budget.
+ *
+ * MockEngine cannot help with either - it has no WebSocket support (KTOR-537)
+ * - so this spins up a real, throwaway, in-process server instead.
  *
  * [RatingWebSocketClient.connect] takes an injectable backoff for exactly
- * this reason: with the real 1s..16s schedule this test would take ~15s.
- * The server is stopped only once it has confirmed closing the first
+ * this reason: with the real 1s..16s schedule the first test would take
+ * ~15s. The server is stopped only once it has confirmed closing the first
  * connection ([firstConnectionClosed]), not after a guessed delay - with a
  * fast backoff, a fixed sleep would race the client's own reconnect attempt.
  */
@@ -76,7 +81,7 @@ class RatingWebSocketClientTest {
         val client = HttpClient(OkHttp) { install(WebSockets) }
         val wsClient = RatingWebSocketClient(client, baseUrl = "http://127.0.0.1:$port/")
 
-        val events = mutableListOf<RatingWebSocketClient.ConnectionEvent>()
+        val events = mutableListOf<ConnectionEvent>()
         val job = launch {
             wsClient.connect("any-token", fastBackoff).toList(events)
         }
@@ -89,16 +94,54 @@ class RatingWebSocketClientTest {
         job.join()
 
         assertTrue(
+            "expected a Connected event for the handshake",
+            events.any { it is ConnectionEvent.Connected },
+        )
+        assertTrue(
             "expected the message sent before the forced disconnect",
-            events.any { it is RatingWebSocketClient.ConnectionEvent.MessageReceived },
+            events.any { it is ConnectionEvent.MessageReceived },
         )
         assertEquals(
             "five consecutive failures (the forced close plus four refused reconnects) means four Reconnecting events before Failed",
-            4,
-            events.count { it is RatingWebSocketClient.ConnectionEvent.Reconnecting },
+            listOf(1, 2, 3, 4),
+            events.filterIsInstance<ConnectionEvent.Reconnecting>().map { it.failedAttempts },
         )
-        assertEquals(RatingWebSocketClient.ConnectionEvent.Failed, events.last())
+        assertEquals(ConnectionEvent.Failed(Failure.Connection), events.last())
 
         client.close()
+    }
+
+    @Test
+    fun `a rejected token fails immediately as Unauthorized, without spending the retry budget`() = runTest {
+        val port = 19192
+
+        val server = embeddedServer(Netty, port = port) {
+            install(ServerWebSockets)
+            routing {
+                // Mirrors EventsRoutes: the stub cannot reject at the HTTP
+                // upgrade itself, only after accepting the handshake.
+                webSocket("/events/ratings") {
+                    close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "invalid or missing token"))
+                }
+            }
+        }
+        server.start(wait = false)
+
+        val client = HttpClient(OkHttp) { install(WebSockets) }
+        val wsClient = RatingWebSocketClient(client, baseUrl = "http://127.0.0.1:$port/")
+
+        val events = wsClient.connect("bad-token", fastBackoff).toList()
+
+        server.stop(0, 0)
+        client.close()
+
+        assertTrue(
+            "a rejected token must not reconnect at all",
+            events.none { it is ConnectionEvent.Reconnecting },
+        )
+        assertEquals(
+            listOf(ConnectionEvent.Connected, ConnectionEvent.Failed(Failure.Unauthorized)),
+            events,
+        )
     }
 }

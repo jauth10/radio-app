@@ -1,9 +1,9 @@
 package com.iu.radioapp.data.remote.s4feedback
 
 import com.iu.radioapp.di.ApiBaseUrl
+import com.iu.radioapp.domain.Failure
 import contract.common.Endpoints
 import contract.common.RadioJson
-import contract.s4feedback.RatingEventMessage
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.websocket.CloseReason
@@ -18,13 +18,26 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * Client for WS /events/ratings.
+ * [RatingEventDataSource] backed by a real WS connection to /events/ratings.
  *
  * Connects, reconnects with growing backoff on a dropped connection, and
- * reports [ConnectionEvent.Failed] after [MAX_ATTEMPTS] consecutive failures.
- * It does not decide to fall back to polling itself - per the ticket, that is
- * RatingRepository's call, not this client's; this class only reports what
- * happened.
+ * reports [ConnectionEvent.Failed] after [MAX_ATTEMPTS] consecutive failures -
+ * except a rejected token ([CloseReason.Codes.VIOLATED_POLICY]), which fails
+ * immediately without using up the retry budget, since retrying the same
+ * token cannot succeed. It does not decide to fall back to polling itself -
+ * per the ticket, that is RatingRepository's call, not this client's; this
+ * class only reports what happened.
+ *
+ * The reconnect counter resets only once a connection has actually proven
+ * itself by delivering a frame, not merely on a successful handshake: the
+ * stub accepts the handshake even for a rejected token and only closes
+ * afterwards (it cannot reject at the HTTP upgrade itself), so resetting on
+ * handshake alone would hide a rapidly rejecting server behind an
+ * ever-resetting counter and [ConnectionEvent.Failed] would never fire.
+ * Known gap: a session that stays open but idle (no ratings for a while)
+ * then drops abnormally is counted the same as a fresh failure streak -
+ * there is no server-side keepalive yet to prove "still open" without
+ * traffic.
  *
  * [baseUrl] is converted from http(s) to ws(s) explicitly rather than relying
  * on [HttpClient]'s default request scheme - Ktor's own docs do not state
@@ -34,26 +47,13 @@ import kotlin.time.Duration.Companion.seconds
 class RatingWebSocketClient @Inject constructor(
     private val client: HttpClient,
     @ApiBaseUrl private val baseUrl: String,
-) {
+) : RatingEventDataSource {
 
-    sealed interface ConnectionEvent {
-        data class MessageReceived(val message: RatingEventMessage) : ConnectionEvent
-        data object Reconnecting : ConnectionEvent
-        /** Five failed attempts in a row - the caller decides what happens next. */
-        data object Failed : ConnectionEvent
-    }
-
-    /**
-     * Connects and stays connected, emitting every message as it arrives.
-     * A successful connection resets the failure count, so a brief hiccup
-     * does not use up the whole budget - only [MAX_ATTEMPTS] *consecutive*
-     * failures end the flow with [ConnectionEvent.Failed].
-     */
-    fun connect(token: String): Flow<ConnectionEvent> = connect(token, ::defaultBackoff)
+    override fun events(token: String): Flow<ConnectionEvent> = connect(token, ::defaultBackoff)
 
     /**
      * [backoffFor] is only a parameter so a test can replace real delays with
-     * near-zero ones; every real caller uses [connect] above, which always
+     * near-zero ones; every real caller uses [events] above, which always
      * uses [defaultBackoff].
      */
     internal fun connect(token: String, backoffFor: (attempt: Int) -> Duration): Flow<ConnectionEvent> = flow {
@@ -61,9 +61,14 @@ class RatingWebSocketClient @Inject constructor(
         var attempt = 0
         while (true) {
             try {
+                var provenOpen = false
                 client.webSocket(url) {
-                    attempt = 0
+                    emit(ConnectionEvent.Connected)
                     for (frame in incoming) {
+                        if (!provenOpen) {
+                            provenOpen = true
+                            attempt = 0
+                        }
                         if (frame is Frame.Text) {
                             emit(ConnectionEvent.MessageReceived(RadioJson.decodeFromString(frame.readText())))
                         }
@@ -72,21 +77,25 @@ class RatingWebSocketClient @Inject constructor(
                     // server ended the session abnormally (e.g. it force-closed
                     // a stale connection) - only a genuine CloseReason.Codes.NORMAL
                     // means there is nothing left to reconnect for.
-                    val reason = closeReason.await()
-                    if (reason?.knownReason != CloseReason.Codes.NORMAL) {
-                        throw ConnectionClosedAbnormally(reason)
+                    when (closeReason.await()?.knownReason) {
+                        CloseReason.Codes.NORMAL -> Unit
+                        CloseReason.Codes.VIOLATED_POLICY -> throw RejectedToken()
+                        else -> throw ConnectionClosedAbnormally()
                     }
                 }
                 return@flow
             } catch (e: CancellationException) {
                 throw e
+            } catch (e: RejectedToken) {
+                emit(ConnectionEvent.Failed(Failure.Unauthorized))
+                return@flow
             } catch (e: Exception) {
                 attempt++
                 if (attempt >= MAX_ATTEMPTS) {
-                    emit(ConnectionEvent.Failed)
+                    emit(ConnectionEvent.Failed(Failure.Connection))
                     return@flow
                 }
-                emit(ConnectionEvent.Reconnecting)
+                emit(ConnectionEvent.Reconnecting(attempt))
                 delay(backoffFor(attempt))
             }
         }
@@ -98,7 +107,10 @@ class RatingWebSocketClient @Inject constructor(
     }
 
     /** Marks a session that ended without throwing, but not with a normal close, as reconnect-worthy. */
-    private class ConnectionClosedAbnormally(reason: CloseReason?) : Exception("closed abnormally: $reason")
+    private class ConnectionClosedAbnormally : Exception()
+
+    /** The stub rejected the token (VIOLATED_POLICY) - final, not reconnect-worthy. */
+    private class RejectedToken : Exception()
 
     companion object {
         /** Matches the ticket: reconnect with growing backoff, report failure after five. */
