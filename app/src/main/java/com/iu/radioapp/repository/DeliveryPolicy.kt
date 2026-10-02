@@ -6,6 +6,7 @@ import com.iu.radioapp.domain.DeliveryStatus
 import com.iu.radioapp.domain.Failure
 import com.iu.radioapp.domain.OperationType
 import com.iu.radioapp.domain.Outcome
+import kotlinx.coroutines.CancellationException
 import kotlin.time.Clock
 import kotlin.time.Instant
 
@@ -35,20 +36,31 @@ internal suspend fun <T> OutboxDao.deliverOpenEntries(
     onRejected: suspend (OutboxEntity, reason: String) -> Unit,
 ): Outcome<Unit> {
     var technicalFailure: Failure? = null
+    var localError: Exception? = null
     for (entry in openEntries().filter { it.operation == operation }) {
-        when (val outcome = send(entry)) {
-            is Outcome.Success -> onDelivered(entry, outcome.value)
-            is Outcome.Error -> when (val failure = outcome.failure) {
-                // Never re-sent on its own, whatever retryable says.
-                is Failure.Rejected -> onRejected(entry, failure.reason)
-                else -> {
-                    recordFailedAttempt(entry, clock.now())
-                    technicalFailure = technicalFailure ?: failure
-                    // Without a connection the remaining entries would only burn attempts.
-                    if (failure is Failure.Connection) break
+        try {
+            when (val outcome = send(entry)) {
+                is Outcome.Success -> onDelivered(entry, outcome.value)
+                is Outcome.Error -> when (val failure = outcome.failure) {
+                    // Never re-sent on its own, whatever retryable says.
+                    is Failure.Rejected -> onRejected(entry, failure.reason)
+                    else -> {
+                        recordFailedAttempt(entry, clock.now())
+                        technicalFailure = technicalFailure ?: failure
+                        // Without a connection the remaining entries would only burn attempts.
+                        if (failure is Failure.Connection) break
+                    }
                 }
             }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Booked as a failed attempt so a broken entry ends up FAILED instead of blocking the queue.
+            recordFailedAttempt(entry, clock.now())
+            localError = localError ?: e
         }
     }
+    // Rethrown, not mapped to a Failure: no failure class fits a local error.
+    localError?.let { throw it }
     return technicalFailure?.let { Outcome.Error(it) } ?: Outcome.Success(Unit)
 }

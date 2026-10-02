@@ -23,8 +23,11 @@ class HostRepository @Inject constructor(
             is Outcome.Error -> outcome
         }
 
+    // The only reader of the token; whoever needs it gets it handed in by the interactor.
+    fun observeSessionToken(): Flow<String?> = preferences.hostSessionToken
+
     fun observeSessionActive(): Flow<Boolean> =
-        preferences.hostSessionToken.map { it != null }
+        observeSessionToken().map { it != null }
 
     suspend fun endSession(): Outcome<Unit> {
         preferences.clearHostSession()
