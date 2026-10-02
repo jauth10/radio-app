@@ -1,17 +1,14 @@
 package com.iu.radioapp.work
 
 import android.content.Context
-import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.work.ListenableWorker
 import androidx.work.WorkerFactory
 import androidx.work.WorkerParameters
 import androidx.work.testing.TestListenableWorkerBuilder
-import com.iu.radioapp.data.local.KeystoreTokenCipher
 import com.iu.radioapp.data.local.RadioDatabase
 import com.iu.radioapp.data.local.TEST_EPOCH
-import com.iu.radioapp.data.local.UserPreferencesDataSource
 import com.iu.radioapp.data.local.createInMemoryDatabase
 import com.iu.radioapp.data.remote.s3requests.RequestsDataSource
 import com.iu.radioapp.data.remote.s4feedback.FeedbackDataSource
@@ -38,8 +35,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
-import java.io.File
-import java.util.UUID
 import kotlin.time.Clock
 import kotlin.time.Instant
 import contract.s3requests.RequestStatus as RequestStatusDto
@@ -55,26 +50,19 @@ class DeliveryWorkerTest {
     private val feedback = ScriptedFeedback()
 
     private lateinit var database: RadioDatabase
-    private lateinit var storeFile: File
     private lateinit var songRequests: SongRequestRepository
     private lateinit var ratings: RatingRepository
 
     @Before
     fun setUp() {
         database = createInMemoryDatabase()
-        storeFile = File(context.cacheDir, "test-${UUID.randomUUID()}.preferences_pb")
-        val preferences = UserPreferencesDataSource(
-            dataStore = PreferenceDataStoreFactory.create { storeFile },
-            tokenCipher = KeystoreTokenCipher(keyAlias = "com.iu.radioapp.test.token"),
-        )
         songRequests = SongRequestRepository(requests, database.outboxDao(), database.songRequestDao(), clock)
-        ratings = RatingRepository(feedback, database.outboxDao(), preferences, clock)
+        ratings = RatingRepository(feedback, database.outboxDao(), clock)
     }
 
     @After
     fun tearDown() {
         database.close()
-        storeFile.delete()
     }
 
     private fun worker(): DeliveryWorker =
