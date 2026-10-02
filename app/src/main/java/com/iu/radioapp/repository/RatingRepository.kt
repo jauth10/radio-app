@@ -2,9 +2,11 @@ package com.iu.radioapp.repository
 
 import com.iu.radioapp.data.local.OutboxDao
 import com.iu.radioapp.data.local.OutboxEntity
+import com.iu.radioapp.data.local.UserPreferencesDataSource
 import com.iu.radioapp.data.local.toDomain
 import com.iu.radioapp.data.remote.s4feedback.FeedbackDataSource
 import com.iu.radioapp.domain.DeliveryStatus
+import com.iu.radioapp.domain.Failure
 import com.iu.radioapp.domain.OperationType
 import com.iu.radioapp.domain.Outcome
 import com.iu.radioapp.domain.OutboxEntry
@@ -17,6 +19,7 @@ import com.iu.radioapp.repository.mapping.toRequestDto
 import contract.common.RadioJson
 import contract.s4feedback.RatingRequest
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import kotlin.time.Clock
@@ -25,6 +28,7 @@ import kotlin.time.Instant
 class RatingRepository @Inject constructor(
     private val feedback: FeedbackDataSource,
     private val outboxDao: OutboxDao,
+    private val preferences: UserPreferencesDataSource,
     private val clock: Clock,
 ) {
 
@@ -61,8 +65,11 @@ class RatingRepository @Inject constructor(
     suspend fun getAggregate(showId: String): Outcome<RatingAggregate> =
         feedback.getAggregate(showId).map { it.toDomain() }
 
-    suspend fun getRatingsSince(since: Instant, showId: String): Outcome<List<RatingEvent>> =
-        feedback.getRatingsSince(since, showId).map { events -> events.map { it.toDomain() } }
+    /** The moderation host session token, same as the WS channel it falls back for - no session, no read. */
+    suspend fun getRatingsSince(since: Instant, showId: String): Outcome<List<RatingEvent>> {
+        val token = preferences.hostSessionToken.first() ?: return Outcome.Error(Failure.Unauthorized)
+        return feedback.getRatingsSince(since, showId, token).map { events -> events.map { it.toDomain() } }
+    }
 
     fun observeDeliveries(): Flow<List<OutboxEntry>> =
         outboxDao.observeAll().map { entries ->

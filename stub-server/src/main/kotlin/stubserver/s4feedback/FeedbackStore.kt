@@ -25,7 +25,16 @@ object FeedbackStore {
     const val SEEDED_HOST_ID = "host-1"
 
     sealed interface SubmitResult {
-        data class Success(val response: RatingResponse) : SubmitResult
+        /**
+         * [event]/[aggregate] are null on an idempotent replay: nothing new
+         * happened, so there is nothing to broadcast on the WS channel - the
+         * route only broadcasts when both are present.
+         */
+        data class Success(
+            val response: RatingResponse,
+            val event: RatingEventDto? = null,
+            val aggregate: AggregateDto? = null,
+        ) : SubmitResult
         /** Bad value - 422. */
         data class Invalid(val reason: String) : SubmitResult
         /** Already rated this hour - 409. */
@@ -98,23 +107,19 @@ object FeedbackStore {
         }
 
         val ratingId = "rat-${nextRatingId++}"
-        ratings.add(
-            SeededRating(
-                RatingEventDto(
-                    ratingId = ratingId,
-                    target = rating.target,
-                    value = rating.value,
-                    comment = rating.comment,
-                    serverReceivedAt = receivedAt,
-                    displayName = null,
-                ),
-                referenceId = rating.referenceId,
-            )
+        val event = RatingEventDto(
+            ratingId = ratingId,
+            target = rating.target,
+            value = rating.value,
+            comment = rating.comment,
+            serverReceivedAt = receivedAt,
+            displayName = null,
         )
+        ratings.add(SeededRating(event, referenceId = rating.referenceId))
         ratedKeys += conflictKey
         val response = RatingResponse(ratingId = ratingId)
         responsesByIdempotencyKey[idempotencyKey] = response
-        return SubmitResult.Success(response)
+        return SubmitResult.Success(response, event, aggregateFor(SEEDED_SHOW_ID))
     }
 
     fun aggregateFor(showId: String): AggregateDto {

@@ -9,6 +9,8 @@ import com.iu.radioapp.data.remote.s3requests.HttpRequestsDataSource
 import com.iu.radioapp.data.remote.s3requests.RequestsDataSource
 import com.iu.radioapp.data.remote.s4feedback.FeedbackDataSource
 import com.iu.radioapp.data.remote.s4feedback.HttpFeedbackDataSource
+import com.iu.radioapp.data.remote.s4feedback.RatingEventDataSource
+import com.iu.radioapp.data.remote.s4feedback.RatingWebSocketClient
 import contract.common.RadioJson
 import dagger.Module
 import dagger.Provides
@@ -18,6 +20,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.defaultRequest
+import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.request.url
 import io.ktor.serialization.kotlinx.json.json
 import javax.inject.Singleton
@@ -25,6 +28,11 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 internal object RemoteDataModule {
+
+    @Provides
+    @Singleton
+    @ApiBaseUrl
+    fun provideApiBaseUrl(): String = BuildConfig.API_BASE_URL
 
     @Provides
     @Singleton
@@ -36,6 +44,7 @@ internal object RemoteDataModule {
         install(ContentNegotiation) {
             json(RadioJson)
         }
+        install(WebSockets)
         defaultRequest {
             url(BuildConfig.API_BASE_URL)
         }
@@ -56,4 +65,11 @@ internal object RemoteDataModule {
     @Provides
     @Singleton
     fun provideFeedbackDataSource(client: HttpClient): FeedbackDataSource = HttpFeedbackDataSource(client)
+
+    @Provides
+    @Singleton
+    fun provideRatingEventDataSource(
+        client: HttpClient,
+        @ApiBaseUrl baseUrl: String,
+    ): RatingEventDataSource = RatingWebSocketClient(client, baseUrl)
 }

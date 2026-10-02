@@ -40,9 +40,10 @@ class HttpFeedbackDataSource @Inject constructor(
         }
 
     @OptIn(ExperimentalTime::class)
-    override suspend fun getRatingsSince(since: Instant, showId: String): Outcome<List<RatingEventDto>> =
+    override suspend fun getRatingsSince(since: Instant, showId: String, token: String): Outcome<List<RatingEventDto>> =
         requestOutcome {
             client.get(Endpoints.S4_RATINGS_SINCE) {
+                header(Endpoints.HEADER_AUTH, "Bearer $token")
                 parameter(Endpoints.PARAM_SINCE, since.toString())
                 parameter(Endpoints.PARAM_SHOW_ID, showId)
             }

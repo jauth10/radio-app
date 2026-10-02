@@ -88,3 +88,25 @@ enum class EventType {
     NEW_RATING,
     AGGREGATE_UPDATED,
 }
+
+/**
+ * WS message envelope for /events/ratings.
+ *
+ * [t0] is the server's emit time for THIS notification - the moment
+ * distribution happens - kept apart from [RatingEventDto.serverReceivedAt]
+ * (when the underlying rating was received). The stub broadcasts synchronously
+ * right after accepting a rating, so the two are usually close together, but
+ * they measure different things: one is the input, the other the push itself.
+ *
+ * Exactly one of [rating] / [aggregate] is set, matching [type]: a flat,
+ * optional-field shape was chosen over a polymorphic one to match every other
+ * DTO in this module, and RadioJson's explicitNulls = false keeps the unused
+ * field out of the JSON entirely rather than sending it as null.
+ */
+@Serializable
+data class RatingEventMessage(
+    val type: EventType,
+    val t0: Instant,
+    val rating: RatingEventDto? = null,
+    val aggregate: AggregateDto? = null,
+)
