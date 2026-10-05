@@ -6,7 +6,9 @@ import contract.s4feedback.EventType
 import contract.s4feedback.RatingEventDto
 import contract.s4feedback.RatingEventMessage
 import io.ktor.server.websocket.DefaultWebSocketServerSession
+import io.ktor.websocket.CloseReason
 import io.ktor.websocket.Frame
+import io.ktor.websocket.close
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CancellationException
 import kotlin.time.ExperimentalTime
@@ -30,6 +32,26 @@ object RatingEventBroadcaster {
 
     fun unregister(session: DefaultWebSocketServerSession) {
         sessions -= session
+    }
+
+    /**
+     * Closes every connected session with [reason] and returns how many were closed.
+     * Stub control (RAD-17): reproduces a dropped connection on demand. The
+     * sessions unregister themselves once their own webSocket block ends.
+     */
+    suspend fun closeAll(reason: CloseReason): Int {
+        var closed = 0
+        for (session in sessions) {
+            try {
+                session.close(reason)
+                closed++
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Already closing on its own - nothing left to close.
+            }
+        }
+        return closed
     }
 
     /**

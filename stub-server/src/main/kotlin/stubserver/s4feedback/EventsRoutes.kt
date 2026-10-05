@@ -5,6 +5,9 @@ import io.ktor.server.routing.Route
 import io.ktor.server.websocket.webSocket
 import io.ktor.websocket.CloseReason
 import io.ktor.websocket.close
+import stubserver.control.ErrorArea
+import stubserver.control.ErrorCode
+import stubserver.control.StubControl
 import stubserver.s1playout.PlayoutStore
 
 /** WS /events/ratings - see RatingEventBroadcaster for the distribution itself. */
@@ -13,6 +16,14 @@ fun Route.eventsRoutes() {
         val token = call.request.queryParameters[Endpoints.PARAM_TOKEN]
         if (token == null || PlayoutStore.hostIdForToken(token) == null) {
             close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "invalid or missing token"))
+            return@webSocket
+        }
+
+        // Stub control (RAD-17): simulates an expired session on an otherwise valid
+        // token. Checked after the real token check so an invalid token never
+        // uses up an armed pattern.
+        if (StubControl.take(ErrorArea.EVENT_CHANNEL) { it == ErrorCode.HTTP_401 } != null) {
+            close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "session expired (stub control)"))
             return@webSocket
         }
 
