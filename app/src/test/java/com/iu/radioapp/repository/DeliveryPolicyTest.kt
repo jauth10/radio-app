@@ -7,8 +7,11 @@ import com.iu.radioapp.domain.DeliveryStatus
 import com.iu.radioapp.domain.Failure
 import com.iu.radioapp.domain.OperationType
 import com.iu.radioapp.domain.Outcome
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DeliveryPolicyTest {
@@ -32,10 +35,13 @@ class DeliveryPolicyTest {
     private suspend fun entry(key: String) = outboxDao.findByIdempotencyKey(key)
 
     private suspend fun deliver(answers: Map<String, Outcome<Unit>>): Outcome<Unit> =
+        deliverWith { entry -> answers.getValue(entry.idempotencyKey) }
+
+    private suspend fun deliverWith(send: suspend (OutboxEntity) -> Outcome<Unit>): Outcome<Unit> =
         outboxDao.deliverOpenEntries(
             operation = OperationType.RATING,
             clock = clock,
-            send = { entry -> answers.getValue(entry.idempotencyKey) },
+            send = send,
             onDelivered = { entry, _ -> outboxDao.markDelivered(entry.id) },
             onRejected = { entry, reason -> outboxDao.markRejected(entry.id, reason) },
         )
@@ -115,5 +121,65 @@ class DeliveryPolicyTest {
         deliver(mapOf("key-1" to Outcome.Success(Unit)))
 
         assertEquals(DeliveryStatus.OPEN, outboxDao.findEntry(otherId)?.status)
+    }
+
+    @Test
+    fun `exception on one entry is booked as an attempt and the run goes on`() = runTest {
+        enqueue("key-1")
+        enqueue("key-2")
+        val broken = IllegalStateException("payload does not decode")
+
+        val thrown = runCatching {
+            deliverWith { entry -> if (entry.idempotencyKey == "key-1") throw broken else Outcome.Success(Unit) }
+        }.exceptionOrNull()
+
+        assertSame(broken, thrown)
+        assertEquals(1, entry("key-1")?.attempts)
+        assertEquals(DeliveryStatus.OPEN, entry("key-1")?.status)
+        assertEquals(DeliveryStatus.DELIVERED, entry("key-2")?.status)
+    }
+
+    @Test
+    fun `entry that keeps throwing ends up failed after five runs`() = runTest {
+        enqueue("key-1")
+
+        repeat(DeliveryPolicy.MAX_ATTEMPTS_PER_OPENING) {
+            runCatching { deliverWith { throw IllegalStateException("broken") } }
+        }
+
+        assertEquals(5, entry("key-1")?.attempts)
+        assertEquals(DeliveryStatus.FAILED, entry("key-1")?.status)
+    }
+
+    @Test
+    fun `exception while booking a success counts as a failed attempt`() = runTest {
+        enqueue("key-1")
+
+        val thrown = runCatching {
+            outboxDao.deliverOpenEntries(
+                operation = OperationType.RATING,
+                clock = clock,
+                send = { Outcome.Success(Unit) },
+                onDelivered = { _, _ -> error("booking failed") },
+                onRejected = { entry, reason -> outboxDao.markRejected(entry.id, reason) },
+            )
+        }.exceptionOrNull()
+
+        assertEquals("booking failed", thrown?.message)
+        assertEquals(1, entry("key-1")?.attempts)
+        assertEquals(DeliveryStatus.OPEN, entry("key-1")?.status)
+    }
+
+    @Test
+    fun `cancellation stops the run without booking an attempt`() = runTest {
+        enqueue("key-1")
+        enqueue("key-2")
+
+        val thrown = runCatching { deliverWith { throw CancellationException("stopped") } }.exceptionOrNull()
+
+        assertTrue(thrown is CancellationException)
+
+        assertEquals(0, entry("key-1")?.attempts)
+        assertEquals(0, entry("key-2")?.attempts)
     }
 }

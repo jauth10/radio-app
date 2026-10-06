@@ -53,6 +53,17 @@ class HostRepositoryTest {
     }
 
     @Test
+    fun `session token is observable until endSession`() = runTest {
+        repository.observeSessionToken().test {
+            assertNull(awaitItem())
+            repository.login("1234", "device-1")
+            assertEquals("fake-session-device-1", awaitItem())
+            repository.endSession()
+            assertNull(awaitItem())
+        }
+    }
+
+    @Test
     fun `session is active between login and endSession`() = runTest {
         repository.observeSessionActive().test {
             assertEquals(false, awaitItem())
