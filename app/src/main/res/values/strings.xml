@@ -1,3 +1,102 @@
 <resources>
     <string name="app_name">RadioApp</string>
+
+    <!-- Navigation -->
+    <string name="nav_program">Programm</string>
+    <string name="nav_requests">Wünsche</string>
+    <string name="nav_rating">Bewerten</string>
+    <string name="action_back">Zurück</string>
+    <string name="action_host">Moderation</string>
+    <string name="title_now_playing">Jetzt im Programm</string>
+    <string name="title_my_requests">Meine Wünsche</string>
+    <string name="title_search">Titel suchen</string>
+    <string name="title_song_request">Wunsch absenden</string>
+    <string name="title_rating">Bewerten</string>
+    <string name="title_host_entry">Moderation</string>
+
+    <!-- Shared states -->
+    <string name="state_loading">Wird geladen …</string>
+    <string name="action_reload">Erneut laden</string>
+    <string name="action_retry_delivery">Erneut senden</string>
+    <string name="offline_title">Keine Verbindung</string>
+    <string name="offline_no_data">Der Sender ist nicht erreichbar, und es liegt noch kein gespeicherter Stand vor.</string>
+    <string name="error_title">Etwas ist schiefgelaufen</string>
+    <string name="failure_connection">Keine Verbindung zum Sender.</string>
+    <string name="failure_server">Der Sender meldet eine Störung. Bitte später erneut versuchen.</string>
+    <string name="failure_unauthorized">Der Zugriff wurde vom Sender verweigert.</string>
+    <string name="failure_rejected">Abgelehnt: %1$s</string>
+    <string name="stand_at">Stand %1$s</string>
+    <string name="stale_marker">Veraltet</string>
+    <string name="stale_hint">Dieser Stand ist älter als fünf Minuten.</string>
+
+    <!-- Now playing (US1) -->
+    <string name="now_playing_label">Läuft gerade</string>
+    <string name="now_playing_host">Moderation: %1$s</string>
+    <string name="now_playing_started">Seit %1$s</string>
+    <string name="now_playing_last_known">Zuletzt bekannter Titel</string>
+    <string name="talk_segment_title">Gerade läuft ein Wortbeitrag</string>
+    <string name="talk_segment_body">Es wird gerade kein Musiktitel gespielt.</string>
+    <string name="history_title">Zuletzt gespielt</string>
+    <string name="history_empty">Noch keine Titel im Verlauf.</string>
+    <string name="action_request_track">Wünschen</string>
+
+    <!-- Search (US3) -->
+    <string name="search_label">Interpret oder Titel</string>
+    <string name="action_search">Suchen</string>
+    <string name="search_prompt">Gib einen Suchbegriff ein, um im Archiv zu suchen.</string>
+    <string name="search_no_hits">Keine Treffer für „%1$s“.</string>
+    <string name="search_offline_body">Das Musikarchiv ist nicht erreichbar. Titel aus dem laufenden Programm und dem Verlauf lassen sich trotzdem wünschen.</string>
+    <string name="not_broadcastable_label">Nicht sendefähig</string>
+
+    <!-- Song request (US3) -->
+    <string name="request_message_label">Nachricht (optional)</string>
+    <string name="request_name_label">Anzeigename (optional)</string>
+    <string name="action_submit_request">Wunsch absenden</string>
+    <string name="request_archive_offline">Das Musikarchiv ist nicht erreichbar. Dein Wunsch wird trotzdem vorgemerkt, der Sender entscheidet beim Eingang.</string>
+    <string name="request_archive_error">Das Musikarchiv meldet eine Störung. Dein Wunsch wird trotzdem vorgemerkt, der Sender entscheidet beim Eingang.</string>
+    <string name="request_queued">Wunsch vorgemerkt. Er wird gesendet, sobald eine Verbindung besteht.</string>
+    <string name="action_show_my_requests">Zu meinen Wünschen</string>
+
+    <!-- My requests (US3) -->
+    <string name="my_requests_empty">Du hast noch keine Wünsche abgeschickt.</string>
+    <string name="action_find_track">Titel suchen</string>
+    <string name="action_refresh">Aktualisieren</string>
+    <string name="requests_offline_hint">Keine Verbindung. Angezeigt wird der zuletzt bekannte Status.</string>
+    <string name="request_created_at">Gewünscht um %1$s</string>
+    <string name="request_scheduled">Geplant für %1$s</string>
+    <string name="request_unknown_title">Titel %1$s</string>
+
+    <!-- Rating (US2, US4) -->
+    <string name="rating_tab_playlist">Playlist</string>
+    <string name="rating_tab_host">Moderation</string>
+    <string name="rating_subject_playlist">Playlist der laufenden Sendung</string>
+    <string name="rating_subject_host">Moderation: %1$s</string>
+    <string name="rating_value_label">Deine Bewertung</string>
+    <string name="rating_comment_label">Kommentar (optional)</string>
+    <string name="action_submit_rating">Bewertung absenden</string>
+    <string name="rating_locked">Du hast in dieser Sitzung bereits bewertet.</string>
+    <string name="rating_status_title">Deine abgegebene Bewertung</string>
+    <string name="rating_offline_hint">Keine Verbindung. Die Bewertung wird vorgemerkt und gesendet, sobald eine Verbindung besteht.</string>
+    <string name="rating_value_description">%1$d von 5</string>
+
+    <!-- Local refusals (RefusalReason) -->
+    <string name="refusal_track_not_broadcastable">Dieser Titel darf nicht gesendet werden und kann deshalb nicht gewünscht werden.</string>
+    <string name="refusal_no_show_on_air">Gerade läuft ein Wortbeitrag. Es gibt nichts zu bewerten.</string>
+    <string name="refusal_host_unknown">Die Moderation der laufenden Sendung ist nicht bekannt. Eine Moderationsbewertung ist deshalb nicht möglich.</string>
+    <string name="refusal_context_stale">Der angezeigte Stand ist älter als fünf Minuten und nennt womöglich noch die vorige Sendung. Bewerten ist erst nach einer Aktualisierung möglich.</string>
+
+    <!-- Delivery status (DeliveryStatus) -->
+    <string name="delivery_open">Ausstehend – wird gesendet, sobald möglich</string>
+    <string name="delivery_delivered">Zugestellt</string>
+    <string name="delivery_rejected">Abgelehnt: %1$s</string>
+    <string name="delivery_failed">Zustellung fehlgeschlagen</string>
+
+    <!-- Station status (RequestStatus) -->
+    <string name="request_status_pending">Beim Sender eingegangen</string>
+    <string name="request_status_in_review">In Prüfung</string>
+    <string name="request_status_accepted">Angenommen</string>
+    <string name="request_status_rejected">Abgelehnt</string>
+
+    <!-- Role switch entry (RAD-16 replaces the content) -->
+    <string name="host_entry_body">Die Anmeldung für die Moderation ist in dieser Version noch nicht verfügbar.</string>
 </resources>
