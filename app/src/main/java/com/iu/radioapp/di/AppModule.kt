@@ -7,19 +7,10 @@ import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 import kotlin.time.Clock
 
-/**
- * Application-wide Hilt module. Intentionally empty apart from [ScaffoldMarker],
- * which serves as the injection proof for RAD-2. Database, DAOs and DataStore
- * follow in RAD-3, the network data sources in RAD-14.
- */
+/** Application-wide Hilt module; persistence, network and work have modules of their own. */
 @Module
 @InstallIn(SingletonComponent::class)
 object AppModule {
-
-    @Provides
-    @Singleton
-    fun provideScaffoldMarker(): ScaffoldMarker =
-        ScaffoldMarker("Hilt-Injektion aktiv")
 
     @Provides
     @Singleton
