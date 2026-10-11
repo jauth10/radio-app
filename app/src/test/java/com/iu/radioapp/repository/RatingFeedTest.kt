@@ -52,11 +52,14 @@ class RatingFeedTest {
 
     private fun feedTest(
         showId: String? = SHOW_ID,
+        since: Instant = clock.now(),
         repository: RatingRepository = this.repository,
+        beforeOpening: suspend TestScope.() -> Unit = {},
         block: suspend TestScope.(List<RatingFeedSignal>) -> Unit,
     ) = runTest(StandardTestDispatcher(scheduler)) {
+        beforeOpening()
         val signals = mutableListOf<RatingFeedSignal>()
-        backgroundScope.launch { repository.observeRatingFeed(TOKEN, showId).toList(signals) }
+        backgroundScope.launch { repository.observeRatingFeed(TOKEN, showId, since).toList(signals) }
         runCurrent()
         block(signals)
     }
@@ -309,6 +312,43 @@ class RatingFeedTest {
 
         assertEquals(statesBefore, signals.states())
         assertEquals(listOf(rating.ratingId), signals.ratingIds())
+    }
+
+    @Test
+    fun `ratings since the given start are loaded on opening and marked as catch-up`() {
+        val received = mutableListOf<RatingEventDto>()
+        feedTest(
+            since = TEST_NOW + 5.minutes,
+            beforeOpening = {
+                received += receivedByStation()
+                advance(10.minutes)
+                received += receivedByStation()
+            },
+        ) { signals ->
+            assertEquals(listOf(received.last().ratingId), signals.ratingIds())
+            assertEquals(FeedSource.CATCH_UP, signals.received().single().source)
+        }
+    }
+
+    @Test
+    fun `a rating loaded on opening is not repeated by the event channel`() {
+        val received = mutableListOf<RatingEventDto>()
+        feedTest(since = TEST_NOW, beforeOpening = { received += receivedByStation() }) { signals ->
+            connect()
+
+            emit(pushed(received.single()))
+
+            assertEquals(listOf(received.single().ratingId), signals.ratingIds())
+            assertEquals(FeedSource.CATCH_UP, signals.received().single().source)
+        }
+    }
+
+    @Test
+    fun `a rejected token on opening ends the session`() {
+        feedback.nextFailure = Failure.Unauthorized
+        feedTest { signals ->
+            assertEquals(RatingFeedSignal.SessionRejected, signals.last())
+        }
     }
 
     private companion object {

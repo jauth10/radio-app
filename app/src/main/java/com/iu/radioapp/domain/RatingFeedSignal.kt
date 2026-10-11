@@ -1,9 +1,10 @@
 package com.iu.radioapp.domain
 
-/** Which path a rating took to the host view. */
+/** Which path a rating took to the host view; CATCH_UP ratings were loaded on opening and say nothing about latency. */
 enum class FeedSource {
     EVENT_CHANNEL,
     POLLING,
+    CATCH_UP,
 }
 
 data class ReceivedRating(

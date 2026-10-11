@@ -3,6 +3,7 @@ package com.iu.radioapp.interactor
 import com.iu.radioapp.data.remote.s4feedback.ConnectionEvent
 import com.iu.radioapp.domain.ConnectionState
 import com.iu.radioapp.domain.Failure
+import com.iu.radioapp.domain.FeedSource
 import com.iu.radioapp.domain.HostFeed
 import com.iu.radioapp.domain.Outcome
 import com.iu.radioapp.domain.RatingTarget
@@ -159,5 +160,23 @@ class HostInteractorFeedTest {
 
         assertNull(feeds.active.showId)
         assertNull(feeds.active.aggregate)
+    }
+
+    @Test
+    fun `ratings since login are loaded when the feed starts, older ones are not`() = runTest(StandardTestDispatcher(scheduler)) {
+        fixture.ratingInteractor.submitRating(RatingTarget.PLAYLIST, 3, "Vor der Anmeldung")
+        fixture.ratingRepository.deliverOpen()
+        advanceTimeBy(10.minutes)
+        login()
+        fixture.ratingInteractor.submitRating(RatingTarget.HOST, 5, "Nach der Anmeldung")
+        fixture.ratingRepository.deliverOpen()
+
+        val feeds = mutableListOf<HostFeed>()
+        backgroundScope.launch { interactor.observeHostFeed().toList(feeds) }
+        runCurrent()
+
+        val received = feeds.active.ratings.single()
+        assertEquals("Nach der Anmeldung", received.rating.comment)
+        assertEquals(FeedSource.CATCH_UP, received.source)
     }
 }

@@ -138,7 +138,9 @@ fun RadioApp(navController: NavHostController = rememberNavController()) {
 }
 
 // Each area keeps its own back stack and its ViewModels (and with them the rating session lock).
+// The host route belongs to no area; left on the stack it would be saved and restored with it.
 private fun NavHostController.navigateToTopLevel(topLevel: TopLevel) {
+    popBackStack<HostEntryRoute>(inclusive = true)
     navigate(topLevel.route) {
         popUpTo(graph.findStartDestination().id) { saveState = true }
         launchSingleTop = true

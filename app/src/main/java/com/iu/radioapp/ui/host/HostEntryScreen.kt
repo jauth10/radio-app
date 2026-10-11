@@ -1,12 +1,18 @@
 package com.iu.radioapp.ui.host
 
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.res.stringResource
-import com.iu.radioapp.R
-import com.iu.radioapp.ui.common.MessageView
+import androidx.compose.runtime.getValue
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.iu.radioapp.ui.common.LoadingView
 
-/** Entry point of the role switch; RAD-16 replaces this content with the host login. */
+/** One route for the role switch: login without a session, the host view with one. */
 @Composable
-fun HostEntryScreen() {
-    MessageView(title = stringResource(R.string.title_host_entry), body = stringResource(R.string.host_entry_body))
+fun HostEntryScreen(viewModel: HostFeedViewModel = hiltViewModel()) {
+    val access by viewModel.access.collectAsStateWithLifecycle()
+    when (val current = access) {
+        HostAccess.Checking -> LoadingView()
+        is HostAccess.SignedOut -> HostLoginRoute(sessionExpired = current.sessionExpired)
+        HostAccess.SignedIn -> HostFeedRoute(viewModel)
+    }
 }

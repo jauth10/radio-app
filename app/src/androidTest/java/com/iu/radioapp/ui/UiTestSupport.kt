@@ -1,5 +1,6 @@
 package com.iu.radioapp.ui
 
+import androidx.annotation.PluralsRes
 import androidx.annotation.StringRes
 import androidx.test.platform.app.InstrumentationRegistry
 import com.iu.radioapp.domain.Host
@@ -12,6 +13,9 @@ import kotlin.time.Instant
 
 fun str(@StringRes id: Int, vararg args: Any): String =
     InstrumentationRegistry.getInstrumentation().targetContext.getString(id, *args)
+
+fun plural(@PluralsRes id: Int, count: Int, vararg args: Any): String =
+    InstrumentationRegistry.getInstrumentation().targetContext.resources.getQuantityString(id, count, *args)
 
 val T0: Instant = Instant.parse("2026-10-10T10:00:00Z")
 

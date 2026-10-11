@@ -18,7 +18,7 @@ class HostRepositoryTest {
     private val clock = MutableClock()
     private val playout = FakePlayoutDataSource(clock)
     private val preferences = inMemoryUserPreferences()
-    private val repository = HostRepository(playout, preferences)
+    private val repository = HostRepository(playout, preferences, clock)
 
     @Test
     fun `login stores the token and returns the session`() = runTest {
@@ -76,10 +76,13 @@ class HostRepositoryTest {
     }
 
     @Test
-    fun `login stores the validity next to the token`() = runTest {
+    fun `login stores validity and start time next to the token`() = runTest {
         repository.login("1234", "device-1")
 
-        assertEquals(SessionCredentials("fake-session-device-1", TEST_NOW + 1.hours), repository.observeSession().first())
+        assertEquals(
+            SessionCredentials("fake-session-device-1", validUntil = TEST_NOW + 1.hours, startedAt = TEST_NOW),
+            repository.observeSession().first(),
+        )
     }
 
     @Test

@@ -97,6 +97,38 @@
     <string name="request_status_accepted">Angenommen</string>
     <string name="request_status_rejected">Abgelehnt</string>
 
-    <!-- Role switch entry (RAD-16 replaces the content) -->
-    <string name="host_entry_body">Die Anmeldung für die Moderation ist in dieser Version noch nicht verfügbar.</string>
+    <!-- Host login (US5) -->
+    <string name="host_login_title">Anmeldung für die Moderation</string>
+    <string name="host_login_intro">Gib den Moderationscode ein, den du vom Sender bekommen hast.</string>
+    <string name="host_code_label">Moderationscode</string>
+    <string name="action_login">Anmelden</string>
+    <string name="host_login_running">Anmeldung läuft …</string>
+    <string name="host_session_expired">Deine Sitzung ist abgelaufen. Bitte melde dich erneut an.</string>
+    <string name="host_login_invalid">Der Moderationscode ist ungültig.</string>
+    <string name="host_login_rejected">Anmeldung nicht möglich: %1$s</string>
+    <string name="host_login_offline">Keine Verbindung zum Sender. Die Anmeldung ist erst mit Verbindung möglich.</string>
+
+    <!-- Host view (US5) -->
+    <string name="host_connection_connecting">Verbindung wird aufgebaut …</string>
+    <string name="host_connection_connected">Verbunden – neue Bewertungen erscheinen sofort.</string>
+    <string name="host_connection_reconnecting">Verbindung unterbrochen – verbindet neu (Fehlversuch %1$d von 5).</string>
+    <string name="host_connection_polling">Abfragebetrieb – neue Bewertungen werden alle 10 Sekunden abgefragt.</string>
+    <string name="host_connection_polling_no_show">Abfragebetrieb – keine Sendung bekannt, es werden keine Bewertungen abgefragt.</string>
+    <string name="host_offline_hint">Keine Verbindung zum Sender. Bereits eingegangene Bewertungen bleiben sichtbar.</string>
+    <string name="host_numbers_title">Laufende Sendung</string>
+    <plurals name="host_numbers_playlist">
+        <item quantity="one">Playlist: Ø %1$s aus %2$d Bewertung</item>
+        <item quantity="other">Playlist: Ø %1$s aus %2$d Bewertungen</item>
+    </plurals>
+    <plurals name="host_numbers_host">
+        <item quantity="one">Moderation: Ø %1$s aus %2$d Bewertung</item>
+        <item quantity="other">Moderation: Ø %1$s aus %2$d Bewertungen</item>
+    </plurals>
+    <string name="host_numbers_talk_segment">Während eines Wortbeitrags werden keine Zahlen gezeigt.</string>
+    <string name="host_numbers_unavailable">Ohne aktuellen Stand der Sendung werden keine Zahlen gezeigt.</string>
+    <string name="host_ratings_title">Eingegangene Bewertungen</string>
+    <string name="host_ratings_empty">Seit dem Öffnen ist noch keine Bewertung eingegangen.</string>
+    <string name="host_rating_from">von %1$s</string>
+    <string name="host_rating_received">Eingegangen um %1$s</string>
+    <string name="action_logout">Abmelden</string>
 </resources>

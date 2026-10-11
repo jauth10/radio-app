@@ -75,7 +75,11 @@ class UserPreferencesDataSource(
     /** Token and expiry read together, so a reader never sees one without the other. */
     val hostSession: Flow<StoredHostSession?> = dataStore.data.map { preferences ->
         preferences[KEY_HOST_SESSION_TOKEN]?.let(tokenCipher::decrypt)?.let { token ->
-            StoredHostSession(token, preferences[KEY_HOST_SESSION_VALID_UNTIL]?.let(Instant::fromEpochMilliseconds))
+            StoredHostSession(
+                token = token,
+                validUntil = preferences[KEY_HOST_SESSION_VALID_UNTIL]?.let(Instant::fromEpochMilliseconds),
+                startedAt = preferences[KEY_HOST_SESSION_STARTED_AT]?.let(Instant::fromEpochMilliseconds),
+            )
         }
     }
 
@@ -98,11 +102,12 @@ class UserPreferencesDataSource(
         dataStore.edit { preferences -> preferences[KEY_HOST_SESSION_TOKEN] = cipherText }
     }
 
-    suspend fun setHostSession(token: String, validUntil: Instant) {
+    suspend fun setHostSession(token: String, validUntil: Instant, startedAt: Instant) {
         val cipherText = tokenCipher.encrypt(token)
         dataStore.edit { preferences ->
             preferences[KEY_HOST_SESSION_TOKEN] = cipherText
             preferences[KEY_HOST_SESSION_VALID_UNTIL] = validUntil.toEpochMilliseconds()
+            preferences[KEY_HOST_SESSION_STARTED_AT] = startedAt.toEpochMilliseconds()
         }
     }
 
@@ -111,6 +116,7 @@ class UserPreferencesDataSource(
         dataStore.edit { preferences ->
             preferences.remove(KEY_HOST_SESSION_TOKEN)
             preferences.remove(KEY_HOST_SESSION_VALID_UNTIL)
+            preferences.remove(KEY_HOST_SESSION_STARTED_AT)
         }
     }
 
@@ -134,7 +140,8 @@ class UserPreferencesDataSource(
         private val KEY_DISPLAY_NAME = stringPreferencesKey("display_name")
         private val KEY_HOST_SESSION_TOKEN = stringPreferencesKey("host_session_token")
         private val KEY_HOST_SESSION_VALID_UNTIL = longPreferencesKey("host_session_valid_until")
+        private val KEY_HOST_SESSION_STARTED_AT = longPreferencesKey("host_session_started_at")
     }
 }
 
-data class StoredHostSession(val token: String, val validUntil: Instant?)
+data class StoredHostSession(val token: String, val validUntil: Instant?, val startedAt: Instant?)

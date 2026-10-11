@@ -48,7 +48,7 @@ class InteractorFixture(val clock: MutableClock = MutableClock()) {
     val archiveRepository = ArchiveRepository(archive)
     val songRequestRepository = SongRequestRepository(requests, outboxDao, songRequestDao, clock)
     val ratingRepository = RatingRepository(feedback, ratingEvents, outboxDao, clock)
-    val hostRepository = HostRepository(playout, preferences)
+    val hostRepository = HostRepository(playout, preferences, clock)
     val listenerRepository = ListenerRepository(preferences)
 
     val trackInteractor = TrackInteractor(trackRepository, archiveRepository, clock)

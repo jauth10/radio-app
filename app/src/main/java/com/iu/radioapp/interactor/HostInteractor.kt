@@ -91,7 +91,7 @@ class HostInteractor @Inject constructor(
         val initialAggregate = showId?.let { (ratings.getAggregate(it) as? Outcome.Success)?.value }
         var feed = HostFeed.Active(emptyList(), initialAggregate, ConnectionState.Connecting, showId)
         send(feed)
-        ratings.observeRatingFeed(session.token, showId).collect { signal ->
+        ratings.observeRatingFeed(session.token, showId, since = session.startedAt ?: clock.now()).collect { signal ->
             feed = when (signal) {
                 is RatingFeedSignal.RatingReceived -> feed.copy(
                     ratings = (feed.ratings + signal.received).sortedByDescending { it.rating.serverReceivedAt },

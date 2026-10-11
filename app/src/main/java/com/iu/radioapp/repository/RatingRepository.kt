@@ -93,12 +93,12 @@ class RatingRepository @Inject constructor(
         }
 
     /**
-     * Event channel and polling fallback as one stream. Which source is used is decided here,
-     * not in the event client; without a [showId] there is nothing to poll for.
+     * Event channel and polling fallback as one stream, starting with the ratings received since [since].
+     * Which source is used is decided here, not in the event client; without a [showId] nothing is loaded or polled.
      */
-    fun observeRatingFeed(token: String, showId: String?): Flow<RatingFeedSignal> = channelFlow {
+    fun observeRatingFeed(token: String, showId: String?, since: Instant): Flow<RatingFeedSignal> = channelFlow {
         val rejected = CompletableDeferred<Unit>()
-        launch { FeedRun(this@channelFlow, token, showId, rejected).run() }
+        launch { FeedRun(this@channelFlow, token, showId, since, rejected).run() }
         rejected.await()
         coroutineContext.cancelChildren()
         send(RatingFeedSignal.SessionRejected)
@@ -110,16 +110,20 @@ class RatingRepository @Inject constructor(
         private val out: ProducerScope<RatingFeedSignal>,
         private val token: String,
         private val showId: String?,
+        since: Instant,
         private val rejected: CompletableDeferred<Unit>,
     ) {
         private val lock = Mutex()
         private val seen = HashSet<String>()
-        private var cursor: Instant = clock.now() - INITIAL_LOOKBACK
+
+        // The margin covers a device clock running ahead of the station's.
+        private var cursor: Instant = since - INITIAL_LOOKBACK
         private var connected = false
         private var polling: Job? = null
 
         suspend fun run() {
             out.send(RatingFeedSignal.StateChanged(ConnectionState.Connecting))
+            out.launch { catchUp() }
             while (true) {
                 if (follow() == ChannelEnd.REJECTED) {
                     rejected.complete(Unit)
@@ -185,6 +189,16 @@ class RatingRepository @Inject constructor(
                 EventType.AGGREGATE_UPDATED -> message.aggregate?.let {
                     out.send(RatingFeedSignal.AggregateUpdated(it.toDomain()))
                 }
+            }
+        }
+
+        // A failed catch-up only leaves the list shorter; a rejected token ends the session as anywhere else.
+        private suspend fun catchUp() {
+            val showId = showId ?: return
+            when (val outcome = getRatingsSince(lock.withLock { cursor }, showId, token)) {
+                is Outcome.Success -> outcome.value.sortedBy { it.serverReceivedAt }
+                    .forEach { deliver(it, FeedSource.CATCH_UP) }
+                is Outcome.Error -> if (outcome.failure == Failure.Unauthorized) rejected.complete(Unit)
             }
         }
 
