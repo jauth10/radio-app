@@ -142,6 +142,7 @@ class DeliveryWorkerTest {
         comment = null,
         createdAt = TEST_EPOCH,
         listenerId = "listener-1",
+        displayName = null,
     )
 
     private class ScriptedRequests : RequestsDataSource {

@@ -113,7 +113,7 @@ object FeedbackStore {
             value = rating.value,
             comment = rating.comment,
             serverReceivedAt = receivedAt,
-            displayName = null,
+            displayName = rating.displayName,
         )
         ratings.add(SeededRating(event, referenceId = rating.referenceId))
         ratedKeys += conflictKey

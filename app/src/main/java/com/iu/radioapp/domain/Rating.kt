@@ -26,4 +26,5 @@ data class Rating(
     val comment: String?,
     val createdAt: Instant,
     val listenerId: String,
+    val displayName: String?,
 )

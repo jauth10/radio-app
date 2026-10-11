@@ -61,6 +61,8 @@ class RatingInteractor @Inject constructor(
             comment = comment?.takeIf { it.isNotBlank() },
             createdAt = clock.now(),
             listenerId = listener.listenerId,
+            // The stored name is a device setting, so the host sees it on ratings too.
+            displayName = listener.displayName,
         )
         when (val outcome = ratings.enqueue(rating)) {
             is Outcome.Success -> deliveryScheduler.schedule()

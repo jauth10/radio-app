@@ -149,4 +149,24 @@ class RatingRepositoryTest {
 
         assertEquals(Outcome.Error(Failure.Connection), repository.getRatingsSince(TEST_NOW, "show-1", "session-1"))
     }
+
+    @Test
+    fun `an entry queued before the display name existed is still delivered`() = runTest {
+        outboxDao.insert(
+            OutboxEntity(
+                idempotencyKey = "key-old",
+                operation = OperationType.RATING,
+                payload = """{"target":"PLAYLIST","referenceId":"show-1","value":4,"listenerId":"listener-1","timestamp":"2026-09-20T12:00:00Z"}""",
+                attempts = 0,
+                lastAttemptAt = null,
+                status = DeliveryStatus.OPEN,
+                rejectionReason = null,
+            )
+        )
+
+        assertEquals(Outcome.Success(Unit), repository.deliverOpen())
+
+        assertEquals(DeliveryStatus.DELIVERED, entry("key-old")?.status)
+    }
 }
+

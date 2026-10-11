@@ -217,4 +217,22 @@ class RatingInteractorTest {
     fun `value outside one to five is a programming error`() = runTest {
         interactor.submitRating(RatingTarget.PLAYLIST, 6, comment = null)
     }
+
+    @Test
+    fun `the stored display name travels with the rating to the station`() = runTest {
+        fixture.listenerRepository.setDisplayName("Alex")
+
+        val rating = rate()
+        repository.deliverOpen()
+
+        assertEquals("Alex", rating.displayName)
+        val event = (fixture.feedback.getRatingsSince(TEST_NOW - 1.minutes, "show-1", "token") as Outcome.Success).value.single()
+        assertEquals("Alex", event.displayName)
+    }
+
+    @Test
+    fun `without a stored name the rating carries none`() = runTest {
+        assertNull(rate().displayName)
+    }
 }
+

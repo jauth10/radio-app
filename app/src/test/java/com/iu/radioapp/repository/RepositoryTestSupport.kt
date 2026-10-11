@@ -52,4 +52,5 @@ fun rating(
     comment = null,
     createdAt = TEST_NOW,
     listenerId = "listener-1",
+    displayName = null,
 )

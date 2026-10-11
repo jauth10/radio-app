@@ -18,6 +18,8 @@ import kotlin.time.Instant
  * target=HOST it is the hostId.
  * value: 1..5, outside that range -> 422.
  * timestamp: creation time on the DEVICE (offline-capable).
+ * displayName: optional, shown to the host with the rating; missing in older
+ * payloads, hence the default.
  */
 @Serializable
 data class RatingRequest(
@@ -27,6 +29,7 @@ data class RatingRequest(
     val comment: String?,
     val listenerId: String,
     val timestamp: Instant,
+    val displayName: String? = null,
 )
 
 /**
