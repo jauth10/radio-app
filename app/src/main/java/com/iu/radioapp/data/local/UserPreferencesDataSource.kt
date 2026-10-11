@@ -3,6 +3,7 @@ package com.iu.radioapp.data.local
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -12,6 +13,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapNotNull
 import java.util.UUID
+import kotlin.time.Instant
 
 /**
  * The three single values that are not worth a table: listener id, display name,
@@ -70,6 +72,13 @@ class UserPreferencesDataSource(
         preferences[KEY_HOST_SESSION_TOKEN]?.let(tokenCipher::decrypt)
     }
 
+    /** Token and expiry read together, so a reader never sees one without the other. */
+    val hostSession: Flow<StoredHostSession?> = dataStore.data.map { preferences ->
+        preferences[KEY_HOST_SESSION_TOKEN]?.let(tokenCipher::decrypt)?.let { token ->
+            StoredHostSession(token, preferences[KEY_HOST_SESSION_VALID_UNTIL]?.let(Instant::fromEpochMilliseconds))
+        }
+    }
+
     /** Reads the listener id once, for callers that need a value and not a stream. */
     suspend fun requireListenerId(): String = listenerId.first()
 
@@ -89,9 +98,20 @@ class UserPreferencesDataSource(
         dataStore.edit { preferences -> preferences[KEY_HOST_SESSION_TOKEN] = cipherText }
     }
 
+    suspend fun setHostSession(token: String, validUntil: Instant) {
+        val cipherText = tokenCipher.encrypt(token)
+        dataStore.edit { preferences ->
+            preferences[KEY_HOST_SESSION_TOKEN] = cipherText
+            preferences[KEY_HOST_SESSION_VALID_UNTIL] = validUntil.toEpochMilliseconds()
+        }
+    }
+
     /** Ends the host session. The listener id and the display name stay. */
     suspend fun clearHostSession() {
-        dataStore.edit { preferences -> preferences.remove(KEY_HOST_SESSION_TOKEN) }
+        dataStore.edit { preferences ->
+            preferences.remove(KEY_HOST_SESSION_TOKEN)
+            preferences.remove(KEY_HOST_SESSION_VALID_UNTIL)
+        }
     }
 
     /** Writes a fresh id if there is none yet, and returns the one that is now stored. */
@@ -113,5 +133,8 @@ class UserPreferencesDataSource(
         private val KEY_LISTENER_ID = stringPreferencesKey("listener_id")
         private val KEY_DISPLAY_NAME = stringPreferencesKey("display_name")
         private val KEY_HOST_SESSION_TOKEN = stringPreferencesKey("host_session_token")
+        private val KEY_HOST_SESSION_VALID_UNTIL = longPreferencesKey("host_session_valid_until")
     }
 }
+
+data class StoredHostSession(val token: String, val validUntil: Instant?)

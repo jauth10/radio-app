@@ -11,7 +11,9 @@ import com.iu.radioapp.data.local.RadioDatabase
 import com.iu.radioapp.data.local.TEST_EPOCH
 import com.iu.radioapp.data.local.createInMemoryDatabase
 import com.iu.radioapp.data.remote.s3requests.RequestsDataSource
+import com.iu.radioapp.data.remote.s4feedback.ConnectionEvent
 import com.iu.radioapp.data.remote.s4feedback.FeedbackDataSource
+import com.iu.radioapp.data.remote.s4feedback.RatingEventDataSource
 import com.iu.radioapp.domain.DeliveryStatus
 import com.iu.radioapp.domain.Failure
 import com.iu.radioapp.domain.Outcome
@@ -29,6 +31,8 @@ import contract.s4feedback.AggregateDto
 import contract.s4feedback.RatingEventDto
 import contract.s4feedback.RatingRequest
 import contract.s4feedback.RatingResponse
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -57,7 +61,7 @@ class DeliveryWorkerTest {
     fun setUp() {
         database = createInMemoryDatabase()
         songRequests = SongRequestRepository(requests, database.outboxDao(), database.songRequestDao(), clock)
-        ratings = RatingRepository(feedback, database.outboxDao(), clock)
+        ratings = RatingRepository(feedback, NoRatingEvents, database.outboxDao(), clock)
     }
 
     @After
@@ -163,4 +167,8 @@ class DeliveryWorkerTest {
         override suspend fun getRatingsSince(since: Instant, showId: String, token: String): Outcome<List<RatingEventDto>> =
             Outcome.Error(Failure.Server)
     }
+}
+
+private object NoRatingEvents : RatingEventDataSource {
+    override fun events(token: String): Flow<ConnectionEvent> = emptyFlow()
 }

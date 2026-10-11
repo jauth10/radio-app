@@ -4,6 +4,7 @@ import com.iu.radioapp.data.local.FakeOutboxDao
 import com.iu.radioapp.data.local.InMemoryLocalStore
 import com.iu.radioapp.data.local.OutboxEntity
 import com.iu.radioapp.data.remote.s4feedback.FakeFeedbackDataSource
+import com.iu.radioapp.data.remote.s4feedback.FakeRatingEventDataSource
 import com.iu.radioapp.domain.DeliveryStatus
 import com.iu.radioapp.domain.Failure
 import com.iu.radioapp.domain.OperationType
@@ -23,7 +24,7 @@ class RatingRepositoryTest {
     private val feedback = FakeFeedbackDataSource(clock)
     private val store = InMemoryLocalStore()
     private val outboxDao = FakeOutboxDao(store)
-    private val repository = RatingRepository(feedback, outboxDao, clock)
+    private val repository = RatingRepository(feedback, FakeRatingEventDataSource(), outboxDao, clock)
 
     private suspend fun entry(key: String = "key-1") = outboxDao.findByIdempotencyKey(key)
 

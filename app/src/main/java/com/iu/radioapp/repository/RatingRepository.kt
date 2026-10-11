@@ -3,27 +3,50 @@ package com.iu.radioapp.repository
 import com.iu.radioapp.data.local.OutboxDao
 import com.iu.radioapp.data.local.OutboxEntity
 import com.iu.radioapp.data.local.toDomain
+import com.iu.radioapp.data.remote.s4feedback.ConnectionEvent
 import com.iu.radioapp.data.remote.s4feedback.FeedbackDataSource
+import com.iu.radioapp.data.remote.s4feedback.RatingEventDataSource
+import com.iu.radioapp.domain.ConnectionState
 import com.iu.radioapp.domain.DeliveryStatus
+import com.iu.radioapp.domain.Failure
+import com.iu.radioapp.domain.FeedSource
 import com.iu.radioapp.domain.OperationType
 import com.iu.radioapp.domain.Outcome
 import com.iu.radioapp.domain.OutboxEntry
 import com.iu.radioapp.domain.Rating
 import com.iu.radioapp.domain.RatingAggregate
 import com.iu.radioapp.domain.RatingEvent
+import com.iu.radioapp.domain.RatingFeedSignal
+import com.iu.radioapp.domain.ReceivedRating
 import com.iu.radioapp.domain.map
 import com.iu.radioapp.repository.mapping.toDomain
 import com.iu.radioapp.repository.mapping.toRequestDto
 import contract.common.RadioJson
+import contract.s4feedback.EventType
+import contract.s4feedback.RatingEventMessage
 import contract.s4feedback.RatingRequest
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelChildren
+import kotlinx.coroutines.channels.ProducerScope
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
 import kotlin.time.Clock
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
 class RatingRepository @Inject constructor(
     private val feedback: FeedbackDataSource,
+    private val events: RatingEventDataSource,
     private val outboxDao: OutboxDao,
     private val clock: Clock,
 ) {
@@ -68,4 +91,140 @@ class RatingRepository @Inject constructor(
         outboxDao.observeAll().map { entries ->
             entries.filter { it.operation == OperationType.RATING }.map { it.toDomain() }
         }
+
+    /**
+     * Event channel and polling fallback as one stream. Which source is used is decided here,
+     * not in the event client; without a [showId] there is nothing to poll for.
+     */
+    fun observeRatingFeed(token: String, showId: String?): Flow<RatingFeedSignal> = channelFlow {
+        val rejected = CompletableDeferred<Unit>()
+        launch { FeedRun(this@channelFlow, token, showId, rejected).run() }
+        rejected.await()
+        coroutineContext.cancelChildren()
+        send(RatingFeedSignal.SessionRejected)
+    }
+
+    private enum class ChannelEnd { REJECTED, LOST }
+
+    private inner class FeedRun(
+        private val out: ProducerScope<RatingFeedSignal>,
+        private val token: String,
+        private val showId: String?,
+        private val rejected: CompletableDeferred<Unit>,
+    ) {
+        private val lock = Mutex()
+        private val seen = HashSet<String>()
+        private var cursor: Instant = clock.now() - INITIAL_LOOKBACK
+        private var connected = false
+        private var polling: Job? = null
+
+        suspend fun run() {
+            out.send(RatingFeedSignal.StateChanged(ConnectionState.Connecting))
+            while (true) {
+                if (follow() == ChannelEnd.REJECTED) {
+                    rejected.complete(Unit)
+                    return
+                }
+                lock.withLock {
+                    connected = false
+                    if (polling == null) {
+                        out.send(RatingFeedSignal.StateChanged(ConnectionState.Polling))
+                        polling = out.launch { poll() }
+                    }
+                }
+                delay(PROBE_INTERVAL)
+            }
+        }
+
+        // While polling, a reconnect is a probe: its attempts stay invisible until it is confirmed.
+        private suspend fun follow(): ChannelEnd = coroutineScope {
+            var confirmation: Job? = null
+            val end = events.events(token).firstOrNull { event ->
+                when (event) {
+                    ConnectionEvent.Connected -> {
+                        confirmation = launch {
+                            delay(CONFIRMATION_DELAY)
+                            confirm()
+                        }
+                        false
+                    }
+                    is ConnectionEvent.MessageReceived -> {
+                        confirmation?.cancel()
+                        confirm()
+                        handle(event.message)
+                        false
+                    }
+                    is ConnectionEvent.Reconnecting -> {
+                        confirmation?.cancel()
+                        lock.withLock {
+                            connected = false
+                            if (polling == null) {
+                                out.send(RatingFeedSignal.StateChanged(ConnectionState.Reconnecting(event.failedAttempts)))
+                            }
+                        }
+                        false
+                    }
+                    is ConnectionEvent.Failed -> true
+                }
+            }
+            confirmation?.cancel()
+            if ((end as? ConnectionEvent.Failed)?.failure == Failure.Unauthorized) ChannelEnd.REJECTED else ChannelEnd.LOST
+        }
+
+        private suspend fun confirm(): Unit = lock.withLock {
+            if (connected) return@withLock
+            connected = true
+            polling?.cancel()
+            polling = null
+            out.send(RatingFeedSignal.StateChanged(ConnectionState.Connected))
+        }
+
+        private suspend fun handle(message: RatingEventMessage) {
+            when (message.type) {
+                EventType.NEW_RATING -> message.rating?.let { deliver(it.toDomain(), FeedSource.EVENT_CHANNEL) }
+                EventType.AGGREGATE_UPDATED -> message.aggregate?.let {
+                    out.send(RatingFeedSignal.AggregateUpdated(it.toDomain()))
+                }
+            }
+        }
+
+        private suspend fun poll() {
+            val showId = showId ?: return
+            while (true) {
+                // The overlap catches ratings the event channel missed shortly before it dropped.
+                val since = lock.withLock { cursor } - POLL_OVERLAP
+                when (val outcome = getRatingsSince(since, showId, token)) {
+                    is Outcome.Success -> outcome.value.sortedBy { it.serverReceivedAt }
+                        .forEach { deliver(it, FeedSource.POLLING) }
+                    is Outcome.Error -> if (outcome.failure == Failure.Unauthorized) {
+                        rejected.complete(Unit)
+                        return
+                    }
+                }
+                when (val outcome = getAggregate(showId)) {
+                    is Outcome.Success -> out.send(RatingFeedSignal.AggregateUpdated(outcome.value))
+                    is Outcome.Error -> if (outcome.failure == Failure.Unauthorized) {
+                        rejected.complete(Unit)
+                        return
+                    }
+                }
+                delay(POLL_INTERVAL)
+            }
+        }
+
+        private suspend fun deliver(rating: RatingEvent, source: FeedSource): Unit = lock.withLock {
+            if (rating.serverReceivedAt > cursor) cursor = rating.serverReceivedAt
+            if (seen.add(rating.ratingId)) {
+                out.send(RatingFeedSignal.RatingReceived(ReceivedRating(rating, source)))
+            }
+        }
+    }
+
+    companion object {
+        val POLL_INTERVAL = 10.seconds
+        val PROBE_INTERVAL = 60.seconds
+        val CONFIRMATION_DELAY = 1.seconds
+        val POLL_OVERLAP = 30.seconds
+        val INITIAL_LOOKBACK = 1.minutes
+    }
 }
