@@ -4,6 +4,7 @@ import contract.s1playout.CurrentTrackDto
 import contract.s1playout.HistoryEntryDto
 import contract.s2archive.TrackDto
 import java.util.UUID
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.ExperimentalTime
 import kotlin.time.Instant
 
@@ -111,20 +112,38 @@ object PlayoutStore {
 
     /**
      * Assumption (not stated in the ticket or the interface table): five failed
-     * login attempts locks a device out with 429 until a correct code resets it.
+     * login attempts lock a device out with 429 for [LOCKOUT], the correct code
+     * included; otherwise the lock would not hold against anyone who knows it.
      */
     private const val MAX_LOGIN_ATTEMPTS = 5
+    val LOCKOUT = 5.minutes
 
     private val failedLoginAttempts = mutableMapOf<String, Int>()
+    private val lockedUntil = mutableMapOf<String, Instant>()
 
-    /** Records one failed attempt and reports whether [deviceId] is now locked out. */
-    fun recordFailedLogin(deviceId: String): Boolean {
-        val attempts = (failedLoginAttempts[deviceId] ?: 0) + 1
-        failedLoginAttempts[deviceId] = attempts
-        return attempts >= MAX_LOGIN_ATTEMPTS
+    /** An expired lock is lifted here, together with its attempt count. */
+    @Synchronized
+    fun isLockedOut(deviceId: String, now: Instant): Boolean {
+        val until = lockedUntil[deviceId] ?: return false
+        if (until > now) return true
+        lockedUntil.remove(deviceId)
+        failedLoginAttempts.remove(deviceId)
+        return false
     }
 
+    /** Records one failed attempt and reports whether [deviceId] is now locked out. */
+    @Synchronized
+    fun recordFailedLogin(deviceId: String, now: Instant): Boolean {
+        val attempts = (failedLoginAttempts[deviceId] ?: 0) + 1
+        failedLoginAttempts[deviceId] = attempts
+        if (attempts < MAX_LOGIN_ATTEMPTS) return false
+        lockedUntil[deviceId] = now + LOCKOUT
+        return true
+    }
+
+    @Synchronized
     fun resetFailedLogins(deviceId: String) {
         failedLoginAttempts.remove(deviceId)
+        lockedUntil.remove(deviceId)
     }
 }

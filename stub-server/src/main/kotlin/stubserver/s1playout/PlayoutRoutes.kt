@@ -48,13 +48,19 @@ fun Route.playoutRoutes() {
 
     post(Endpoints.S1_HOST_LOGIN) {
         val request = call.receive<HostLoginRequest>()
+        val now = Clock.System.now()
+        // Checked before the code, so a locked device cannot get in with the right one either.
+        if (PlayoutStore.isLockedOut(request.deviceId, now)) {
+            call.respondError(HttpStatusCode.TooManyRequests, lockoutReason(), retryable = true)
+            return@post
+        }
         val host = PlayoutStore.findHost(request.hostCode)
         if (host == null) {
-            val lockedOut = PlayoutStore.recordFailedLogin(request.deviceId)
+            val lockedOut = PlayoutStore.recordFailedLogin(request.deviceId, now)
             if (lockedOut) {
-                call.respondError(HttpStatusCode.TooManyRequests, "too many failed login attempts", retryable = true)
+                call.respondError(HttpStatusCode.TooManyRequests, lockoutReason(), retryable = true)
             } else {
-                call.respondError(HttpStatusCode.Unauthorized, "invalid host code", retryable = false)
+                call.respondError(HttpStatusCode.Unauthorized, "Der Moderationscode ist ungültig.", retryable = false)
             }
             return@post
         }
@@ -69,3 +75,6 @@ fun Route.playoutRoutes() {
         )
     }
 }
+
+private fun lockoutReason() =
+    "Zu viele Fehlversuche. Die Anmeldung ist auf diesem Gerät für ${PlayoutStore.LOCKOUT.inWholeMinutes} Minuten gesperrt."

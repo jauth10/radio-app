@@ -46,6 +46,67 @@ class SongRequestInteractorTest {
     }
 
     @Test
+    fun `prepared request completes an S1 track from the archive`() = runTest {
+        val draft = (interactor.prepareRequest(track("trk-1")) as Outcome.Success).value
+
+        assertEquals(true, draft.track.broadcastable)
+        assertEquals(210, draft.track.durationSeconds)
+        assertNull(draft.refusal)
+    }
+
+    @Test
+    fun `prepared request names the refusal of a track the archive marks as not broadcastable`() = runTest {
+        val draft = (interactor.prepareRequest(track("trk-3")) as Outcome.Success).value
+
+        assertEquals(RefusalReason.TRACK_NOT_BROADCASTABLE, draft.refusal)
+    }
+
+    @Test
+    fun `prepared request passes an unreachable archive on, the request itself still queues`() = runTest {
+        fixture.archive.nextFailure = Failure.Connection
+        fixture.archive.failureRepeatCount = 2
+
+        assertEquals(Outcome.Error(Failure.Connection), interactor.prepareRequest(track("trk-1")))
+        assertTrue(interactor.submitRequest(track("trk-1"), null) is Submission.Queued)
+    }
+
+    @Test
+    fun `prepared request with a known flag does not ask the archive`() = runTest {
+        fixture.archive.nextFailure = Failure.Connection
+
+        val draft = (interactor.prepareRequest(track(broadcastable = false)) as Outcome.Success).value
+
+        assertEquals(RefusalReason.TRACK_NOT_BROADCASTABLE, draft.refusal)
+    }
+
+    @Test
+    fun `display name given with the request is stored and sent`() = runTest {
+        val request = (interactor.submitRequest(track(broadcastable = true), null, "  Kim ") as Submission.Queued).value
+
+        assertEquals(Outcome.Success("Kim"), interactor.getDisplayName())
+        assertTrue(entry(request.idempotencyKey)?.payload?.contains("\"displayName\":\"Kim\"") == true)
+    }
+
+    @Test
+    fun `blank display name clears the stored one`() = runTest {
+        fixture.listenerRepository.setDisplayName("Jo")
+
+        interactor.submitRequest(track(broadcastable = true), null, " ")
+
+        assertEquals(Outcome.Success(null), interactor.getDisplayName())
+    }
+
+    @Test
+    fun `refused request leaves the stored display name alone`() = runTest {
+        fixture.listenerRepository.setDisplayName("Jo")
+
+        val result = interactor.submitRequest(track(broadcastable = false), null, "Kim")
+
+        assertEquals(Submission.Refused(RefusalReason.TRACK_NOT_BROADCASTABLE), result)
+        assertEquals(Outcome.Success("Jo"), interactor.getDisplayName())
+    }
+
+    @Test
     fun `display name and message travel with the request`() = runTest {
         fixture.listenerRepository.setDisplayName("Jo")
 

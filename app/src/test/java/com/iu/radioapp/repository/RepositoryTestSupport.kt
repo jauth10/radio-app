@@ -4,13 +4,21 @@ import com.iu.radioapp.domain.Rating
 import com.iu.radioapp.domain.RatingTarget
 import com.iu.radioapp.domain.RequestStatus
 import com.iu.radioapp.domain.SongRequest
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlin.time.Clock
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Instant
 
 val TEST_NOW: Instant = Instant.parse("2026-09-20T12:00:00Z")
 
-class MutableClock(var instant: Instant = TEST_NOW) : Clock {
-    override fun now(): Instant = instant
+/** With a [scheduler], the clock also moves with the test's virtual time, in step with delay. */
+@OptIn(ExperimentalCoroutinesApi::class)
+class MutableClock(
+    var instant: Instant = TEST_NOW,
+    private val scheduler: TestCoroutineScheduler? = null,
+) : Clock {
+    override fun now(): Instant = instant + (scheduler?.currentTime ?: 0L).milliseconds
 }
 
 fun songRequest(
@@ -44,4 +52,5 @@ fun rating(
     comment = null,
     createdAt = TEST_NOW,
     listenerId = "listener-1",
+    displayName = null,
 )

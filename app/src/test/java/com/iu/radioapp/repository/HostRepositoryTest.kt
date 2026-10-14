@@ -5,6 +5,7 @@ import com.iu.radioapp.data.local.inMemoryUserPreferences
 import com.iu.radioapp.data.remote.s1playout.FakePlayoutDataSource
 import com.iu.radioapp.domain.Failure
 import com.iu.radioapp.domain.Outcome
+import com.iu.radioapp.domain.SessionCredentials
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -17,7 +18,7 @@ class HostRepositoryTest {
     private val clock = MutableClock()
     private val playout = FakePlayoutDataSource(clock)
     private val preferences = inMemoryUserPreferences()
-    private val repository = HostRepository(playout, preferences)
+    private val repository = HostRepository(playout, preferences, clock)
 
     @Test
     fun `login stores the token and returns the session`() = runTest {
@@ -71,6 +72,38 @@ class HostRepositoryTest {
             assertEquals(true, awaitItem())
             repository.endSession()
             assertEquals(false, awaitItem())
+        }
+    }
+
+    @Test
+    fun `login stores validity and start time next to the token`() = runTest {
+        repository.login("1234", "device-1")
+
+        assertEquals(
+            SessionCredentials("fake-session-device-1", validUntil = TEST_NOW + 1.hours, startedAt = TEST_NOW),
+            repository.observeSession().first(),
+        )
+    }
+
+    @Test
+    fun `endSession removes token and validity together`() = runTest {
+        repository.login("1234", "device-1")
+
+        repository.endSession()
+
+        assertNull(repository.observeSession().first())
+    }
+
+    @Test
+    fun `unrelated preference writes do not repeat the session`() = runTest {
+        repository.observeSession().test {
+            assertNull(awaitItem())
+            repository.login("1234", "device-1")
+            awaitItem()
+
+            preferences.setDisplayName("Alex")
+
+            expectNoEvents()
         }
     }
 }

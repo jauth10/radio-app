@@ -26,6 +26,7 @@ fun Rating.toRequestDto(): RatingRequest = RatingRequest(
     comment = comment,
     listenerId = listenerId,
     timestamp = createdAt,
+    displayName = displayName,
 )
 
 fun AggregateDto.toDomain(): RatingAggregate = RatingAggregate(

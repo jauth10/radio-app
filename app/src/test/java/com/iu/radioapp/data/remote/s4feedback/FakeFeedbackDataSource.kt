@@ -96,7 +96,7 @@ class FakeFeedbackDataSource(private val clock: Clock = Clock.System) : Feedback
                     value = rating.value,
                     comment = rating.comment,
                     serverReceivedAt = clock.now(),
-                    displayName = null,
+                    displayName = rating.displayName,
                 ),
                 referenceId = rating.referenceId,
             )

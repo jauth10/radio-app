@@ -10,6 +10,7 @@ import com.iu.radioapp.data.remote.s1playout.FakePlayoutDataSource
 import com.iu.radioapp.data.remote.s2archive.FakeArchiveDataSource
 import com.iu.radioapp.data.remote.s3requests.FakeRequestsDataSource
 import com.iu.radioapp.data.remote.s4feedback.FakeFeedbackDataSource
+import com.iu.radioapp.data.remote.s4feedback.FakeRatingEventDataSource
 import com.iu.radioapp.domain.Track
 import com.iu.radioapp.repository.ArchiveRepository
 import com.iu.radioapp.repository.HostRepository
@@ -29,12 +30,12 @@ class RecordingDeliveryScheduler : DeliveryScheduler {
     }
 }
 
-class InteractorFixture {
-    val clock = MutableClock()
+class InteractorFixture(val clock: MutableClock = MutableClock()) {
     val playout = FakePlayoutDataSource(clock)
     val archive = FakeArchiveDataSource()
     val requests = FakeRequestsDataSource()
     val feedback = FakeFeedbackDataSource(clock)
+    val ratingEvents = FakeRatingEventDataSource()
     val store = InMemoryLocalStore()
     val outboxDao = FakeOutboxDao(store)
     val songRequestDao = FakeSongRequestDao(store)
@@ -46,8 +47,8 @@ class InteractorFixture {
     val trackRepository = TrackRepository(playout, trackCacheDao, historyDao, clock)
     val archiveRepository = ArchiveRepository(archive)
     val songRequestRepository = SongRequestRepository(requests, outboxDao, songRequestDao, clock)
-    val ratingRepository = RatingRepository(feedback, outboxDao, clock)
-    val hostRepository = HostRepository(playout, preferences)
+    val ratingRepository = RatingRepository(feedback, ratingEvents, outboxDao, clock)
+    val hostRepository = HostRepository(playout, preferences, clock)
     val listenerRepository = ListenerRepository(preferences)
 
     val trackInteractor = TrackInteractor(trackRepository, archiveRepository, clock)

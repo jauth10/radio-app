@@ -185,8 +185,54 @@ class RatingInteractorTest {
         assertNull(entry.rejectionReason)
     }
 
+    @Test
+    fun `context carries the cause of a cache fallback and none when live`() = runTest {
+        assertNull(context()?.cause)
+        playout.nextFailure = Failure.Server
+
+        assertEquals(Failure.Server, context()?.cause)
+    }
+
+    @Test
+    fun `refusal is null for a fresh hosted context, for both targets`() = runTest {
+        val context = context()
+
+        assertNull(interactor.refusalFor(context, RatingTarget.PLAYLIST))
+        assertNull(interactor.refusalFor(context, RatingTarget.HOST))
+    }
+
+    @Test
+    fun `refusal names the talk segment, the stale context and the unknown host`() = runTest {
+        val cached = cachedContextAfter(5.minutes + 1.seconds)
+        val unhosted = cached.copy(isStale = false)
+
+        assertEquals(RefusalReason.NO_SHOW_ON_AIR, interactor.refusalFor(null, RatingTarget.PLAYLIST))
+        assertEquals(RefusalReason.CONTEXT_STALE, interactor.refusalFor(cached, RatingTarget.PLAYLIST))
+        assertEquals(RefusalReason.CONTEXT_STALE, interactor.refusalFor(cached, RatingTarget.HOST))
+        assertEquals(RefusalReason.HOST_UNKNOWN, interactor.refusalFor(unhosted, RatingTarget.HOST))
+        assertNull(interactor.refusalFor(unhosted, RatingTarget.PLAYLIST))
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun `value outside one to five is a programming error`() = runTest {
         interactor.submitRating(RatingTarget.PLAYLIST, 6, comment = null)
     }
+
+    @Test
+    fun `the stored display name travels with the rating to the station`() = runTest {
+        fixture.listenerRepository.setDisplayName("Alex")
+
+        val rating = rate()
+        repository.deliverOpen()
+
+        assertEquals("Alex", rating.displayName)
+        val event = (fixture.feedback.getRatingsSince(TEST_NOW - 1.minutes, "show-1", "token") as Outcome.Success).value.single()
+        assertEquals("Alex", event.displayName)
+    }
+
+    @Test
+    fun `without a stored name the rating carries none`() = runTest {
+        assertNull(rate().displayName)
+    }
 }
+
