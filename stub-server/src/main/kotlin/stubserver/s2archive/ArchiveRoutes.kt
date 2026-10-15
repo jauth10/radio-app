@@ -16,11 +16,13 @@ private const val MIN_QUERY_LENGTH = 2
 fun Route.archiveRoutes() {
 
     get(Endpoints.S2_TRACK_SEARCH) {
-        val query = call.request.queryParameters[Endpoints.PARAM_Q] ?: ""
+        // Trimmed, so a query of blanks is neither accepted nor allowed to match every title with a space.
+        val query = (call.request.queryParameters[Endpoints.PARAM_Q] ?: "").trim()
         if (query.length < MIN_QUERY_LENGTH) {
             call.respondError(
                 HttpStatusCode.BadRequest,
-                "${Endpoints.PARAM_Q} must be at least $MIN_QUERY_LENGTH characters",
+                // Shown to the listener as the station's own reason, hence German like the other business rejections.
+                "Der Suchbegriff muss mindestens $MIN_QUERY_LENGTH Zeichen lang sein.",
                 retryable = false,
             )
             return@get
@@ -52,7 +54,7 @@ fun Route.archiveRoutes() {
         }
         val track = ArchiveStore.tracks.find { it.trackId == trackId }
         if (track == null) {
-            call.respondError(HttpStatusCode.NotFound, "unknown trackId: $trackId", retryable = false)
+            call.respondError(HttpStatusCode.NotFound, "Diesen Titel gibt es im Archiv nicht.", retryable = false)
             return@get
         }
         call.respond(track)

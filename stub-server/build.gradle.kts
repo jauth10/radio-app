@@ -35,4 +35,10 @@ dependencies {
     implementation(libs.ktor.server.call.logging)
     implementation(libs.ktor.server.websockets)
     implementation(libs.logback.classic)
+
+    testImplementation(libs.junit)
+    testImplementation(libs.ktor.server.test.host)
+    testImplementation(libs.ktor.client.content.negotiation)
+    testImplementation(libs.ktor.client.websockets)
+    testImplementation(libs.ktor.client.okhttp)
 }

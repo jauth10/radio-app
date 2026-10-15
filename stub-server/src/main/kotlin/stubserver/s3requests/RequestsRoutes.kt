@@ -43,7 +43,7 @@ fun Route.requestsRoutes() {
         }
         val status = RequestsStore.statusOf(requestId)
         if (status == null) {
-            call.respondError(HttpStatusCode.NotFound, "unknown requestId: $requestId", retryable = false)
+            call.respondError(HttpStatusCode.NotFound, "Diesen Wunsch gibt es nicht.", retryable = false)
             return@get
         }
         call.respond(status)
