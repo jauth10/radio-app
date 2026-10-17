@@ -46,7 +46,7 @@ class FakeOutboxDao(
     override fun observeAll(): Flow<List<OutboxEntity>> = store.outbox.checkedBy(fault)
 
     override fun observeByStatus(status: DeliveryStatus): Flow<List<OutboxEntity>> =
-        store.outbox.map { entries -> entries.filter { it.status == status } }
+        store.outbox.map { entries -> entries.filter { it.status == status } }.checkedBy(fault)
 
     override suspend fun findEntry(entryId: Long): OutboxEntity? =
         store.outbox.value.firstOrNull { it.id == entryId }

@@ -38,6 +38,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.SerializationException
 import javax.inject.Inject
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.minutes
@@ -89,6 +90,24 @@ class RatingRepository @Inject constructor(
         outboxDao.observeAll().map { entries ->
             entries.filter { it.operation == OperationType.RATING }.map { it.toDomain() }
         }.asLocalOutcomes()
+
+    /**
+     * Newest first; read back from the stored payload, since ratings have no table of their own.
+     * An unreadable payload is skipped: it could never be resent, and it must not block the readable ones.
+     */
+    fun observeFailedRatings(): Flow<Outcome<List<Rating>>> =
+        outboxDao.observeByStatus(DeliveryStatus.FAILED).map { entries ->
+            entries.filter { it.operation == OperationType.RATING }
+                .sortedByDescending { it.id }
+                .mapNotNull { it.toRatingOrNull() }
+        }.asLocalOutcomes()
+
+    private fun OutboxEntity.toRatingOrNull(): Rating? =
+        try {
+            RadioJson.decodeFromString<RatingRequest>(payload).toDomain(idempotencyKey)
+        } catch (e: SerializationException) {
+            null
+        }
 
     /**
      * Event channel and polling fallback as one stream, starting with the ratings received since [since].

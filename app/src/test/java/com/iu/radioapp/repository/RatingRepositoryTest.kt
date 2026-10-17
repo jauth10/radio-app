@@ -168,5 +168,52 @@ class RatingRepositoryTest {
 
         assertEquals(DeliveryStatus.DELIVERED, entry("key-old")?.status)
     }
-}
 
+    @Test
+    fun `failed ratings are read back from their payload, newest first, without open or song request entries`() = runTest {
+        repository.enqueue(rating("key-a", value = 2))
+        repository.enqueue(rating("key-b", value = 5, target = RatingTarget.HOST, referenceId = "host-1"))
+        // A server fault, unlike a lost connection, does not stop the run, so both entries use up their attempts.
+        feedback.nextFailure = Failure.Server
+        feedback.failureRepeatCount = 10
+        repeat(5) { repository.deliverOpen() }
+        repository.enqueue(rating("key-open"))
+        outboxDao.insert(
+            OutboxEntity(
+                idempotencyKey = "key-s",
+                operation = OperationType.SONG_REQUEST,
+                payload = "{}",
+                attempts = 5,
+                lastAttemptAt = null,
+                status = DeliveryStatus.FAILED,
+                rejectionReason = null,
+            )
+        )
+
+        val failed = repository.observeFailedRatings().firstValue()
+
+        val hostRating = rating("key-b", value = 5, target = RatingTarget.HOST, referenceId = "host-1")
+        assertEquals(listOf(hostRating, rating("key-a", value = 2)), failed)
+    }
+
+    @Test
+    fun `an unreadable failed payload is left out instead of failing the whole list`() = runTest {
+        outboxDao.insert(
+            OutboxEntity(
+                idempotencyKey = "key-broken",
+                operation = OperationType.RATING,
+                payload = "{",
+                attempts = 5,
+                lastAttemptAt = null,
+                status = DeliveryStatus.FAILED,
+                rejectionReason = null,
+            )
+        )
+        repository.enqueue(rating("key-a"))
+        feedback.nextFailure = Failure.Server
+        feedback.failureRepeatCount = 5
+        repeat(5) { repository.deliverOpen() }
+
+        assertEquals(Outcome.Success(listOf(rating("key-a"))), repository.observeFailedRatings().first())
+    }
+}

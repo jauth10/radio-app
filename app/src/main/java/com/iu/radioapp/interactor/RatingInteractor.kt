@@ -14,6 +14,7 @@ import com.iu.radioapp.repository.ListenerRepository
 import com.iu.radioapp.repository.RatingRepository
 import com.iu.radioapp.repository.TrackRepository
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import java.util.UUID
 import javax.inject.Inject
 import kotlin.time.Clock
@@ -88,4 +89,8 @@ class RatingInteractor @Inject constructor(
 
     /** Station rejections arrive here as REJECTED with their reason. */
     fun observeDeliveries(): Flow<Outcome<List<OutboxEntry>>> = ratings.observeDeliveries()
+
+    /** Failed ratings outlive the screen they were given on, so a manual retry stays possible (AK 2.8). */
+    fun observeFailedRatings(target: RatingTarget): Flow<Outcome<List<Rating>>> =
+        ratings.observeFailedRatings().map { outcome -> outcome.map { list -> list.filter { it.target == target } } }
 }

@@ -159,6 +159,23 @@ class RatingInteractorTest {
     }
 
     @Test
+    fun `failed ratings are listed per target and leave the list once retried`() = runTest {
+        val playlist = rate(RatingTarget.PLAYLIST)
+        val host = rate(RatingTarget.HOST, value = 2)
+        fixture.feedback.nextFailure = Failure.Server
+        fixture.feedback.failureRepeatCount = 10
+        repeat(5) { repository.deliverOpen() }
+
+        assertEquals(listOf(playlist), interactor.observeFailedRatings(RatingTarget.PLAYLIST).firstValue())
+        assertEquals(listOf(host), interactor.observeFailedRatings(RatingTarget.HOST).firstValue())
+
+        interactor.retry(playlist.idempotencyKey)
+
+        assertTrue(interactor.observeFailedRatings(RatingTarget.PLAYLIST).firstValue().isEmpty())
+        assertEquals(1, scheduler.immediateCalls)
+    }
+
+    @Test
     fun `key stays stable through failed attempts and manual retry`() = runTest {
         val rating = rate()
         fixture.feedback.nextFailure = Failure.Connection

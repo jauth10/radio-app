@@ -12,6 +12,7 @@ import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.iu.radioapp.R
 import com.iu.radioapp.domain.DeliveryStatus
+import com.iu.radioapp.domain.Rating
 import com.iu.radioapp.domain.RatingTarget
 import com.iu.radioapp.domain.RefusalReason
 import com.iu.radioapp.ui.common.StateTags
@@ -36,6 +37,7 @@ class RatingScreenTest {
     private val values = mutableListOf<Int>()
     private var submits = 0
     private var retries = 0
+    private val retriedKeys = mutableListOf<String>()
 
     private fun show(state: RatingUiState) = compose.setContent {
         RadioAppTheme {
@@ -46,6 +48,7 @@ class RatingScreenTest {
                 onSubmit = { submits++ },
                 onReload = {},
                 onRetryDelivery = { retries++ },
+                onRetryFailed = { retriedKeys += it },
             )
         }
     }
@@ -140,6 +143,17 @@ class RatingScreenTest {
         compose.onNodeWithText(str(R.string.delivery_failed)).assertIsDisplayed()
         compose.onNodeWithTag(RatingTags.RETRY).performClick()
         assertEquals(1, retries)
+    }
+
+    @Test
+    fun ak_2_8_failed_rating_from_an_earlier_visit_can_be_resent_by_hand() {
+        val earlier = Rating("key-old", null, RatingTarget.PLAYLIST, "show-1", 3, "Zu laut", T0, "listener-1", null)
+        show(RatingUiState.Content(panel(), submitted = null, failed = listOf(earlier)))
+
+        compose.onNodeWithText(str(R.string.rating_failed_title)).assertIsDisplayed()
+        compose.onNodeWithText("Zu laut").assertIsDisplayed()
+        compose.onNodeWithTag(RatingTags.RETRY_FAILED).performClick()
+        assertEquals(listOf("key-old"), retriedKeys)
     }
 
     @Test

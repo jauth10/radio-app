@@ -219,6 +219,45 @@ class RatingViewModelTest {
     }
 
     @Test
+    fun `a failed rating from an earlier screen can be retried from a new one`() = runTest {
+        val earlier = start()
+        rate(earlier)
+        fixture.feedback.nextFailure = Failure.Server
+        fixture.feedback.failureRepeatCount = 5
+        repeat(5) { fixture.ratingRepository.deliverOpen() }
+        earlier.viewModelScope.cancel()
+
+        val later = start()
+        val failed = later.uiState.value.failed.single()
+        assertEquals(4, failed.value)
+        assertNull(later.uiState.value.submitted)
+
+        later.retryFailed(failed.idempotencyKey)
+        runCurrent()
+
+        assertEquals(DeliveryStatus.OPEN, later.uiState.value.submitted?.status)
+        assertTrue(later.uiState.value.failed.isEmpty())
+        fixture.ratingRepository.deliverOpen()
+        runCurrent()
+        assertEquals(DeliveryStatus.DELIVERED, later.uiState.value.submitted?.status)
+    }
+
+    @Test
+    fun `the rating in the status card is not listed again, and each tab lists only its own target`() = runTest {
+        val playlist = start(RatingTarget.PLAYLIST)
+        val host = start(RatingTarget.HOST)
+        rate(playlist)
+        fixture.feedback.nextFailure = Failure.Server
+        fixture.feedback.failureRepeatCount = 5
+        repeat(5) { fixture.ratingRepository.deliverOpen() }
+        runCurrent()
+
+        assertEquals(DeliveryStatus.FAILED, playlist.uiState.value.submitted?.status)
+        assertTrue(playlist.uiState.value.failed.isEmpty())
+        assertTrue(host.uiState.value.failed.isEmpty())
+    }
+
+    @Test
     fun `nothing is submitted without a value`() = runTest {
         val viewModel = start()
 
