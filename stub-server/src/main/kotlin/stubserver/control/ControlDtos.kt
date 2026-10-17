@@ -41,6 +41,17 @@ enum class ErrorCode {
     /** Stalls for [ControlRequest.durationMs], then answers 504 - longer than any client timeout. */
     @SerialName("timeout")
     TIMEOUT,
+
+    /**
+     * Drops the connection without any answer, so the client gets an I/O error at
+     * once - what no network looks like - instead of waiting for its timeout.
+     * Makes the offline display reproducible when the device's own network
+     * cannot be switched off (e.g. flight mode does not cut an adb reverse tunnel).
+     * Each dropped connection uses up one of [ControlRequest.count]; a client may
+     * retry once on its own, so arm generously (up to 1000) and disarm with DELETE.
+     */
+    @SerialName("offline")
+    OFFLINE,
 }
 
 /** Which part of the stub an armed error pattern applies to. */

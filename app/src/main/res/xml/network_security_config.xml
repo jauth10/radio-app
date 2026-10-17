@@ -1,11 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    Cleartext HTTP is allowed for the emulator's host alias only - the stub
-    server (RAD-12/13) is plain HTTP for local development, everything else
-    keeps the platform default (HTTPS only, system trust anchors).
+    Cleartext HTTP is allowed for the addresses the stub server (RAD-12/13) is
+    reached on during local development: loopback 127.0.0.1 (through adb reverse,
+    the default) and the emulator's host alias 10.0.2.2 (older Android versions).
+    Everything else keeps the platform default (HTTPS only, system trust anchors).
+    Debug builds additionally allow any host, see src/debug/res/xml.
 -->
 <network-security-config>
     <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
         <domain includeSubdomains="false">10.0.2.2</domain>
     </domain-config>
 </network-security-config>

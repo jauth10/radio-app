@@ -90,7 +90,16 @@ private suspend fun errorPattern(call: ApplicationCall, request: ControlRequest)
         return
     }
     StubControl.arm(code, request.area, request.count, request.durationMs)
-    call.respond(ControlResponse("Armed: next ${request.count} request(s) in area ${request.area} fail with $code"))
+    // A lost network also ends an open event channel. Without this, a host view that is already
+    // connected keeps getting live events while every new request fails. Its reconnect then hits the pattern.
+    val dropsEventChannel = code == ErrorCode.OFFLINE && request.area in setOf(ErrorArea.ALL, ErrorArea.EVENT_CHANNEL)
+    val closed = if (dropsEventChannel) {
+        RatingEventBroadcaster.closeAll(CloseReason(CloseReason.Codes.INTERNAL_ERROR, "connection dropped (stub control)"))
+    } else {
+        0
+    }
+    val closedNote = if (dropsEventChannel) "; closed $closed event channel session(s)" else ""
+    call.respond(ControlResponse("Armed: next ${request.count} request(s) in area ${request.area} fail with $code$closedNote"))
 }
 
 private suspend fun dropConnection(call: ApplicationCall, request: ControlRequest) {
