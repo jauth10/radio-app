@@ -55,6 +55,22 @@ class WorkManagerDeliverySchedulerTest {
     }
 
     @Test
+    fun scheduleImmediatelyReplacesThePendingChainWithAFreshRun() {
+        scheduler.schedule()
+        scheduler.schedule()
+
+        scheduler.scheduleImmediately()
+
+        val (finished, pending) = deliveryWork().partition { it.state.isFinished }
+        assertEquals(listOf(WorkInfo.State.CANCELLED, WorkInfo.State.CANCELLED), finished.map { it.state })
+        val fresh = pending.single()
+        assertEquals(WorkInfo.State.ENQUEUED, fresh.state)
+        assertEquals(0, fresh.runAttemptCount)
+        assertEquals(0L, fresh.initialDelayMillis)
+        assertEquals(NetworkType.CONNECTED, fresh.constraints.requiredNetworkType)
+    }
+
+    @Test
     fun ensureScheduledEnqueuesWhenNothingIsPending() {
         scheduler.ensureScheduled()
 

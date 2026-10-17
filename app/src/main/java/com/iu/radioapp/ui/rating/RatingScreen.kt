@@ -33,6 +33,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.iu.radioapp.R
 import com.iu.radioapp.domain.DeliveryStatus
+import com.iu.radioapp.domain.Rating
 import com.iu.radioapp.domain.RatingTarget
 import com.iu.radioapp.domain.RefusalReason
 import com.iu.radioapp.ui.common.LoadingView
@@ -42,12 +43,15 @@ import com.iu.radioapp.ui.common.StaleMarker
 import com.iu.radioapp.ui.common.deliveryText
 import com.iu.radioapp.ui.common.failureText
 import com.iu.radioapp.ui.common.refusalText
+import com.iu.radioapp.ui.common.toClockText
 
 object RatingTags {
     const val SUBMIT = "rating_submit"
     const val COMMENT = "rating_comment"
     const val STATUS = "rating_status"
     const val RETRY = "rating_retry"
+    const val FAILED_ROW = "rating_failed_row"
+    const val RETRY_FAILED = "rating_retry_failed"
     fun value(value: Int) = "rating_value_$value"
 }
 
@@ -82,6 +86,7 @@ fun RatingRoute(target: RatingTarget) {
         onSubmit = viewModel::submit,
         onReload = viewModel::reload,
         onRetryDelivery = viewModel::retryDelivery,
+        onRetryFailed = viewModel::retryFailed,
     )
 }
 
@@ -93,6 +98,7 @@ fun RatingScreen(
     onSubmit: () -> Unit,
     onReload: () -> Unit,
     onRetryDelivery: () -> Unit,
+    onRetryFailed: (String) -> Unit = {},
 ) {
     if (state is RatingUiState.Loading) {
         LoadingView()
@@ -143,6 +149,35 @@ fun RatingScreen(
                         TextButton(onClick = onRetryDelivery, modifier = Modifier.testTag(RatingTags.RETRY)) {
                             Text(stringResource(R.string.action_retry_delivery))
                         }
+                    }
+                }
+            }
+        }
+        if (state.failed.isNotEmpty()) FailedRatingsCard(state.failed, onRetryFailed)
+    }
+}
+
+// Failed ratings from earlier visits or before a restart; never dropped without a way to resend (AK 2.8).
+@Composable
+private fun FailedRatingsCard(failed: List<Rating>, onRetry: (String) -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(stringResource(R.string.rating_failed_title), style = MaterialTheme.typography.labelLarge)
+            failed.forEach { rating ->
+                Row(
+                    modifier = Modifier.fillMaxWidth().testTag(RatingTags.FAILED_ROW),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(stringResource(R.string.rating_value_description, rating.value))
+                        Text(
+                            stringResource(R.string.rating_created_at, rating.createdAt.toClockText()),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        rating.comment?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                    }
+                    TextButton(onClick = { onRetry(rating.idempotencyKey) }, modifier = Modifier.testTag(RatingTags.RETRY_FAILED)) {
+                        Text(stringResource(R.string.action_retry_delivery))
                     }
                 }
             }

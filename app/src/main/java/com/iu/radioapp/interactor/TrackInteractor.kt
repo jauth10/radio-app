@@ -26,7 +26,7 @@ class TrackInteractor @Inject constructor(
     suspend fun getTrackDetail(track: Track): Outcome<Track> =
         archive.getTrack(track.trackId).map { track.completedWith(it) }
 
-    fun observeHistory(): Flow<List<Playback>> = tracks.observeHistory()
+    fun observeHistory(): Flow<Outcome<List<Playback>>> = tracks.observeHistory()
 
     suspend fun refreshHistory(): Outcome<Unit> = tracks.refreshHistory(HISTORY_LIMIT)
 

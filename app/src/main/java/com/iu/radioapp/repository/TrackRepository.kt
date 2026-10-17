@@ -32,37 +32,43 @@ class TrackRepository @Inject constructor(
             is Outcome.Success -> {
                 val fetchedAt = clock.now()
                 val nowPlaying = outcome.value?.toNowPlaying()
-                // null is a talk segment (204): nothing is stored, the cache keeps the last track.
-                if (nowPlaying != null) {
-                    trackCacheDao.upsert(nowPlaying.playback.track.toCacheEntity(fetchedAt))
-                    historyDao.appendAndTrim(nowPlaying.playback.toHistoryEntity())
+                localOutcome {
+                    // null is a talk segment (204): nothing is stored, the cache keeps the last track.
+                    if (nowPlaying != null) {
+                        trackCacheDao.upsert(nowPlaying.playback.track.toCacheEntity(fetchedAt))
+                        historyDao.appendAndTrim(nowPlaying.playback.toHistoryEntity())
+                    }
+                    ReadResult.Live(nowPlaying, fetchedAt)
                 }
-                Outcome.Success(ReadResult.Live(nowPlaying, fetchedAt))
             }
             is Outcome.Error -> cachedPlayback(outcome.failure)
         }
 
     suspend fun refreshHistory(limit: Int): Outcome<Unit> =
         when (val outcome = playout.getHistory(limit)) {
-            is Outcome.Success -> {
+            is Outcome.Success -> localOutcome {
                 // S1 history carries no showId; a known playback must not lose the one it has.
                 val known = historyDao.observeHistory().first().map { it.playbackId }.toSet()
                 outcome.value
                     .map { it.toPlayback().toHistoryEntity() }
                     .filter { it.playbackId !in known }
                     .forEach { historyDao.appendAndTrim(it) }
-                Outcome.Success(Unit)
             }
             is Outcome.Error -> outcome
         }
 
-    fun observeHistory(): Flow<List<Playback>> =
-        historyDao.observeHistory().map { rows -> rows.map { it.toDomain() } }
+    fun observeHistory(): Flow<Outcome<List<Playback>>> =
+        historyDao.observeHistory().map { rows -> rows.map { it.toDomain() } }.asLocalOutcomes()
 
     private suspend fun cachedPlayback(cause: Failure): Outcome<ReadResult<NowPlaying?>> {
         if (cause !is Failure.Connection && cause !is Failure.Server) return Outcome.Error(cause)
-        val latest = historyDao.observeLatest().first() ?: return Outcome.Error(cause)
-        val cachedTrack = trackCacheDao.findTrack(latest.trackId) ?: return Outcome.Error(cause)
+        val cached = localOutcome {
+            historyDao.observeLatest().first()?.let { latest -> trackCacheDao.findTrack(latest.trackId)?.let { latest to it } }
+        }
+        val (latest, cachedTrack) = when (cached) {
+            is Outcome.Success -> cached.value ?: return Outcome.Error(cause)
+            is Outcome.Error -> return cached
+        }
         val nowPlaying = NowPlaying(
             playback = latest.toDomain().copy(track = cachedTrack.toDomain()),
             show = latest.showId?.let { Show(showId = it, name = null, startsAt = null, endsAt = null, host = null) },

@@ -10,15 +10,14 @@ class ListenerRepository @Inject constructor(
     private val preferences: UserPreferencesDataSource,
 ) {
 
-    suspend fun getListener(): Outcome<Listener> = Outcome.Success(
+    suspend fun getListener(): Outcome<Listener> = localOutcome {
         Listener(
             listenerId = preferences.requireListenerId(),
             displayName = preferences.displayName.first(),
         )
-    )
+    }
 
-    suspend fun setDisplayName(displayName: String?): Outcome<Unit> {
+    suspend fun setDisplayName(displayName: String?): Outcome<Unit> = localOutcome {
         preferences.setDisplayName(displayName)
-        return Outcome.Success(Unit)
     }
 }

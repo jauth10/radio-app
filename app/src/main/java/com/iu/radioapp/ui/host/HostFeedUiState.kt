@@ -10,6 +10,9 @@ sealed interface HostAccess {
     data object Checking : HostAccess
     data class SignedOut(val sessionExpired: Boolean) : HostAccess
     data object SignedIn : HostAccess
+
+    /** The stored session could not be read; neither login nor host view can be decided. */
+    data class Unavailable(val failure: Failure) : HostAccess
 }
 
 /** Empty means no rating has arrived yet; Offline and Error hide the numbers but keep the list. */

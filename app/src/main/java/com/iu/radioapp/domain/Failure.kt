@@ -1,7 +1,8 @@
 package com.iu.radioapp.domain
 
 /**
- * The four error classes the whole app reasons about, agreed in RAD-1.
+ * The error classes the whole app reasons about: the four agreed in RAD-1 plus
+ * [Local] for the device's own storage.
  *
  * This type lives in the domain package on purpose, not in data/remote: it also
  * covers Room and DataStore errors, and the dependency direction has to point
@@ -17,6 +18,8 @@ package com.iu.radioapp.domain
  *   Rejected      - 400, 409, 422, 429. Never retried, the reason is shown.
  *   Unauthorized  - 401, 403. Re-establish the host session; the listener path
  *                   is unaffected.
+ *   Local         - Room or DataStore failed. Shown as an error, never retried
+ *                   on its own.
  */
 sealed interface Failure {
 
@@ -42,4 +45,7 @@ sealed interface Failure {
 
     /** Missing or expired credentials, 401 or 403. */
     data object Unauthorized : Failure
+
+    /** Room or DataStore threw; no station was involved. */
+    data object Local : Failure
 }

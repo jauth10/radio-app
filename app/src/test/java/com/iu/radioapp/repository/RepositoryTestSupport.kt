@@ -1,10 +1,13 @@
 package com.iu.radioapp.repository
 
+import com.iu.radioapp.domain.Outcome
 import com.iu.radioapp.domain.Rating
 import com.iu.radioapp.domain.RatingTarget
 import com.iu.radioapp.domain.RequestStatus
 import com.iu.radioapp.domain.SongRequest
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.milliseconds
@@ -54,3 +57,7 @@ fun rating(
     listenerId = "listener-1",
     displayName = null,
 )
+
+val <T> Outcome<T>.successValue: T get() = (this as Outcome.Success).value
+
+suspend fun <T> Flow<Outcome<T>>.firstValue(): T = first().successValue

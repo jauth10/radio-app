@@ -29,6 +29,19 @@ fun Rating.toRequestDto(): RatingRequest = RatingRequest(
     displayName = displayName,
 )
 
+// The outbox keeps the key beside the payload, not in it.
+fun RatingRequest.toDomain(idempotencyKey: String): Rating = Rating(
+    idempotencyKey = idempotencyKey,
+    ratingId = null,
+    target = target.toDomain(),
+    referenceId = referenceId,
+    value = value,
+    comment = comment,
+    createdAt = timestamp,
+    listenerId = listenerId,
+    displayName = displayName,
+)
+
 fun AggregateDto.toDomain(): RatingAggregate = RatingAggregate(
     averagePlaylistRating = averagePlaylistRating,
     playlistRatingCount = playlistRatingCount,

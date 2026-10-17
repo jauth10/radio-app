@@ -38,6 +38,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.SerializationException
 import javax.inject.Inject
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.minutes
@@ -51,7 +52,7 @@ class RatingRepository @Inject constructor(
     private val clock: Clock,
 ) {
 
-    suspend fun enqueue(rating: Rating): Outcome<Unit> {
+    suspend fun enqueue(rating: Rating): Outcome<Unit> = localOutcome {
         outboxDao.insert(
             OutboxEntity(
                 idempotencyKey = rating.idempotencyKey,
@@ -63,7 +64,6 @@ class RatingRepository @Inject constructor(
                 rejectionReason = null,
             )
         )
-        return Outcome.Success(Unit)
     }
 
     suspend fun deliverOpen(): Outcome<Unit> = outboxDao.deliverOpenEntries(
@@ -76,9 +76,8 @@ class RatingRepository @Inject constructor(
         onRejected = { entry, reason -> outboxDao.markRejected(entry.id, reason) },
     )
 
-    suspend fun retry(idempotencyKey: String): Outcome<Unit> {
+    suspend fun retry(idempotencyKey: String): Outcome<Unit> = localOutcome {
         outboxDao.reopenIfFailed(idempotencyKey)
-        return Outcome.Success(Unit)
     }
 
     suspend fun getAggregate(showId: String): Outcome<RatingAggregate> =
@@ -87,9 +86,27 @@ class RatingRepository @Inject constructor(
     suspend fun getRatingsSince(since: Instant, showId: String, token: String): Outcome<List<RatingEvent>> =
         feedback.getRatingsSince(since, showId, token).map { events -> events.map { it.toDomain() } }
 
-    fun observeDeliveries(): Flow<List<OutboxEntry>> =
+    fun observeDeliveries(): Flow<Outcome<List<OutboxEntry>>> =
         outboxDao.observeAll().map { entries ->
             entries.filter { it.operation == OperationType.RATING }.map { it.toDomain() }
+        }.asLocalOutcomes()
+
+    /**
+     * Newest first; read back from the stored payload, since ratings have no table of their own.
+     * An unreadable payload is skipped: it could never be resent, and it must not block the readable ones.
+     */
+    fun observeFailedRatings(): Flow<Outcome<List<Rating>>> =
+        outboxDao.observeByStatus(DeliveryStatus.FAILED).map { entries ->
+            entries.filter { it.operation == OperationType.RATING }
+                .sortedByDescending { it.id }
+                .mapNotNull { it.toRatingOrNull() }
+        }.asLocalOutcomes()
+
+    private fun OutboxEntity.toRatingOrNull(): Rating? =
+        try {
+            RadioJson.decodeFromString<RatingRequest>(payload).toDomain(idempotencyKey)
+        } catch (e: SerializationException) {
+            null
         }
 
     /**
