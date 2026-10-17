@@ -25,6 +25,7 @@
     <string name="failure_server">Der Sender meldet eine Störung. Bitte später erneut versuchen.</string>
     <string name="failure_unauthorized">Der Zugriff wurde vom Sender verweigert.</string>
     <string name="failure_rejected">Abgelehnt: %1$s</string>
+    <string name="failure_local">Der Speicher der App ist nicht lesbar.</string>
     <string name="stand_at">Stand %1$s</string>
     <string name="stale_marker">Veraltet</string>
     <string name="stale_hint">Dieser Stand ist älter als fünf Minuten.</string>

@@ -1,5 +1,6 @@
 package com.iu.radioapp.interactor
 
+import com.iu.radioapp.repository.firstValue
 import com.iu.radioapp.domain.Failure
 import com.iu.radioapp.domain.NowPlayingState
 import com.iu.radioapp.domain.Outcome
@@ -102,6 +103,6 @@ class TrackInteractorTest {
     fun `refreshHistory fills the history from the station`() = runTest {
         assertEquals(Outcome.Success(Unit), interactor.refreshHistory())
 
-        assertEquals(listOf("trk-1", "trk-2", "trk-3"), interactor.observeHistory().first().map { it.track.trackId })
+        assertEquals(listOf("trk-1", "trk-2", "trk-3"), interactor.observeHistory().firstValue().map { it.track.trackId })
     }
 }

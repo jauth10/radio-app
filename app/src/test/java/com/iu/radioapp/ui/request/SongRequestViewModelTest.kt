@@ -1,5 +1,6 @@
 package com.iu.radioapp.ui.request
 
+import com.iu.radioapp.repository.firstValue
 import com.iu.radioapp.domain.DeliveryStatus
 import com.iu.radioapp.domain.Failure
 import com.iu.radioapp.domain.Outcome
@@ -31,7 +32,7 @@ class SongRequestViewModelTest {
 
     private fun viewModel(track: Track = fromPlayout()) = SongRequestViewModel(track, fixture.songRequestInteractor)
 
-    private suspend fun requests() = fixture.songRequestInteractor.observeRequests().first()
+    private suspend fun requests() = fixture.songRequestInteractor.observeRequests().firstValue()
 
     @Test
     fun `loading turns into the form with the archive data and the stored name`() = runTest {

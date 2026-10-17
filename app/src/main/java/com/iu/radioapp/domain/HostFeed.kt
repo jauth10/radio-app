@@ -7,6 +7,9 @@ sealed interface HostFeed {
     /** The session ran out or was rejected; a new login is needed. */
     data object SessionExpired : HostFeed
 
+    /** The stored session could not be read. */
+    data class Unavailable(val failure: Failure) : HostFeed
+
     /** [ratings] newest first; [showId] is null when no show was known at the start. */
     data class Active(
         val ratings: List<ReceivedRating>,

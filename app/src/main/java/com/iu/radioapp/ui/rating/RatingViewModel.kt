@@ -8,6 +8,7 @@ import com.iu.radioapp.domain.RatingContext
 import com.iu.radioapp.domain.RatingTarget
 import com.iu.radioapp.domain.RefusalReason
 import com.iu.radioapp.domain.Submission
+import com.iu.radioapp.domain.map
 import com.iu.radioapp.domain.referenceIdFor
 import com.iu.radioapp.interactor.RatingInteractor
 import dagger.assisted.Assisted
@@ -65,9 +66,11 @@ class RatingViewModel @AssistedInject constructor(
         }
     }
 
-    private val submitted = combine(submittedKey, ratings.observeDeliveries()) { key, entries ->
-        entries.firstOrNull { it.idempotencyKey == key }
-            ?.let { SubmittedRating(it.idempotencyKey, it.status, it.rejectionReason) }
+    private val submitted = combine(submittedKey, reloads.flatMapLatest { ratings.observeDeliveries() }) { key, outcome ->
+        outcome.map { entries ->
+            entries.firstOrNull { it.idempotencyKey == key }
+                ?.let { SubmittedRating(it.idempotencyKey, it.status, it.rejectionReason) }
+        }
     }
 
     val uiState: StateFlow<RatingUiState> =
@@ -116,6 +119,19 @@ class RatingViewModel @AssistedInject constructor(
         is RatingUiState.Offline -> state.panel
         is RatingUiState.Error -> state.panel
         else -> null
+    }
+
+    private fun toUiState(
+        outcome: Outcome<RatingContext?>?,
+        input: Input,
+        rated: Set<String>,
+        delivery: Outcome<SubmittedRating?>,
+    ): RatingUiState {
+        val submitted = when (delivery) {
+            is Outcome.Success -> delivery.value
+            is Outcome.Error -> return RatingUiState.Error(delivery.failure, panel = null, submitted = null)
+        }
+        return toUiState(outcome, input, rated, submitted)
     }
 
     private fun toUiState(

@@ -1,5 +1,6 @@
 package com.iu.radioapp.interactor
 
+import com.iu.radioapp.repository.firstValue
 import com.iu.radioapp.domain.DeliveryStatus
 import com.iu.radioapp.domain.Failure
 import com.iu.radioapp.domain.Outcome
@@ -29,7 +30,7 @@ class SongRequestInteractorTest {
 
     private suspend fun entry(key: String) = outboxDao.findByIdempotencyKey(key)
 
-    private suspend fun shown() = interactor.observeRequests().first()
+    private suspend fun shown() = interactor.observeRequests().firstValue()
 
     @Test
     fun `submit queues the request with an open outbox entry and schedules delivery`() = runTest {
@@ -128,6 +129,19 @@ class SongRequestInteractorTest {
     }
 
     @Test
+    fun `queuing waits its turn, a manual retry is delivered immediately`() = runTest {
+        val request = submit()
+        fixture.requests.nextFailure = Failure.Server
+        fixture.requests.failureRepeatCount = 5
+        repeat(5) { repository.deliverOpen() }
+
+        interactor.retry(request.idempotencyKey)
+
+        assertEquals(1, scheduler.calls)
+        assertEquals(1, scheduler.immediateCalls)
+    }
+
+    @Test
     fun `key stays stable through failed attempts, manual retry and delivery`() = runTest {
         val request = submit()
         fixture.requests.nextFailure = Failure.Server
@@ -138,7 +152,8 @@ class SongRequestInteractorTest {
         assertEquals(Outcome.Success(Unit), interactor.retry(request.idempotencyKey))
         repository.deliverOpen()
 
-        assertEquals(2, scheduler.calls)
+        assertEquals(1, scheduler.calls)
+        assertEquals(1, scheduler.immediateCalls)
         val row = shown().single()
         assertEquals(request.idempotencyKey, row.request.idempotencyKey)
         assertEquals(DeliveryStatus.DELIVERED, row.deliveryStatus)

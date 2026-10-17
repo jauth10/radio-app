@@ -115,7 +115,7 @@ class RatingRepositoryTest {
         repository.deliverOpen()
 
         assertEquals(DeliveryStatus.OPEN, outboxDao.findEntry(songRequestEntryId)?.status)
-        assertEquals(listOf("key-r"), repository.observeDeliveries().first().map { it.idempotencyKey })
+        assertEquals(listOf("key-r"), repository.observeDeliveries().firstValue().map { it.idempotencyKey })
     }
 
     @Test

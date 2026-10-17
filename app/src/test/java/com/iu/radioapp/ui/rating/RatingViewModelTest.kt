@@ -1,5 +1,6 @@
 package com.iu.radioapp.ui.rating
 
+import com.iu.radioapp.repository.firstValue
 import androidx.lifecycle.viewModelScope
 import com.iu.radioapp.domain.DeliveryStatus
 import com.iu.radioapp.domain.Failure
@@ -60,7 +61,7 @@ class RatingViewModelTest {
         runCurrent()
     }
 
-    private suspend fun deliveries() = fixture.ratingInteractor.observeDeliveries().first()
+    private suspend fun deliveries() = fixture.ratingInteractor.observeDeliveries().firstValue()
 
     @Test
     fun `loading turns into content for the running show and its host`() = runTest {

@@ -36,7 +36,7 @@ class SongRequestRepositoryTest {
         assertEquals(0, entry()?.attempts)
         assertEquals(RequestStatus.PENDING, row()?.status)
         assertNull(row()?.requestId)
-        assertEquals(listOf("key-1"), repository.observeRequests("listener-1").first().map { it.idempotencyKey })
+        assertEquals(listOf("key-1"), repository.observeRequests("listener-1").firstValue().map { it.idempotencyKey })
     }
 
     @Test

@@ -28,7 +28,7 @@ class SongRequestRepository @Inject constructor(
     private val clock: Clock,
 ) {
 
-    suspend fun enqueue(request: SongRequest, displayName: String?): Outcome<Unit> {
+    suspend fun enqueue(request: SongRequest, displayName: String?): Outcome<Unit> = localOutcome {
         val entry = OutboxEntity(
             idempotencyKey = request.idempotencyKey,
             operation = OperationType.SONG_REQUEST,
@@ -39,7 +39,6 @@ class SongRequestRepository @Inject constructor(
             rejectionReason = null,
         )
         outboxDao.enqueueSongRequest(entry, request.toEntity())
-        return Outcome.Success(Unit)
     }
 
     suspend fun deliverOpen(): Outcome<Unit> = outboxDao.deliverOpenEntries(
@@ -62,38 +61,39 @@ class SongRequestRepository @Inject constructor(
         onRejected = { entry, reason -> outboxDao.bookRejection(entry.id, reason) },
     )
 
-    suspend fun retry(idempotencyKey: String): Outcome<Unit> {
+    suspend fun retry(idempotencyKey: String): Outcome<Unit> = localOutcome {
         outboxDao.reopenIfFailed(idempotencyKey)
-        return Outcome.Success(Unit)
     }
 
     suspend fun refreshStatuses(listenerId: String): Outcome<Unit> {
-        val delivered = songRequestDao.observeRequests(listenerId).first().filter { it.requestId != null }
+        val delivered = when (val rows = localOutcome { songRequestDao.observeRequests(listenerId).first() }) {
+            is Outcome.Success -> rows.value.filter { it.requestId != null }
+            is Outcome.Error -> return rows
+        }
         for (row in delivered) {
             when (val outcome = requests.getRequestStatus(checkNotNull(row.requestId))) {
-                is Outcome.Success -> songRequestDao.upsertAll(
-                    listOf(
-                        row.copy(
-                            status = outcome.value.status.toDomain(),
-                            rejectionReason = outcome.value.reason,
-                            scheduledBroadcast = outcome.value.scheduledBroadcast,
-                        )
+                is Outcome.Success -> {
+                    val updated = row.copy(
+                        status = outcome.value.status.toDomain(),
+                        rejectionReason = outcome.value.reason,
+                        scheduledBroadcast = outcome.value.scheduledBroadcast,
                     )
-                )
+                    (localOutcome { songRequestDao.upsertAll(listOf(updated)) } as? Outcome.Error)?.let { return it }
+                }
                 is Outcome.Error -> return outcome
             }
         }
         return Outcome.Success(Unit)
     }
 
-    fun observeRequests(listenerId: String): Flow<List<SongRequest>> =
-        songRequestDao.observeRequests(listenerId).map { rows -> rows.map { it.toDomain() } }
+    fun observeRequests(listenerId: String): Flow<Outcome<List<SongRequest>>> =
+        songRequestDao.observeRequests(listenerId).map { rows -> rows.map { it.toDomain() } }.asLocalOutcomes()
 
     fun observeRequest(idempotencyKey: String): Flow<SongRequest?> =
         songRequestDao.observeRequest(idempotencyKey).map { it?.toDomain() }
 
-    fun observeDeliveries(): Flow<List<OutboxEntry>> =
+    fun observeDeliveries(): Flow<Outcome<List<OutboxEntry>>> =
         outboxDao.observeAll().map { entries ->
             entries.filter { it.operation == OperationType.SONG_REQUEST }.map { it.toDomain() }
-        }
+        }.asLocalOutcomes()
 }

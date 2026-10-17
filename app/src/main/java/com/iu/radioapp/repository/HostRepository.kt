@@ -20,9 +20,9 @@ class HostRepository @Inject constructor(
 
     suspend fun login(hostCode: String, deviceId: String): Outcome<HostSession> =
         when (val outcome = playout.loginHost(hostCode, deviceId)) {
-            is Outcome.Success -> {
+            is Outcome.Success -> localOutcome {
                 preferences.setHostSession(outcome.value.sessionToken, outcome.value.validUntil, startedAt = clock.now())
-                Outcome.Success(outcome.value.toHostSession())
+                outcome.value.toHostSession()
             }
             is Outcome.Error -> outcome
         }
@@ -31,16 +31,16 @@ class HostRepository @Inject constructor(
     fun observeSessionToken(): Flow<String?> = preferences.hostSessionToken
 
     // Distinct, so that unrelated preference writes do not restart whoever follows the session.
-    fun observeSession(): Flow<SessionCredentials?> =
+    fun observeSession(): Flow<Outcome<SessionCredentials?>> =
         preferences.hostSession
             .map { stored -> stored?.let { SessionCredentials(it.token, it.validUntil, it.startedAt) } }
             .distinctUntilChanged()
+            .asLocalOutcomes()
 
     fun observeSessionActive(): Flow<Boolean> =
         observeSessionToken().map { it != null }
 
-    suspend fun endSession(): Outcome<Unit> {
+    suspend fun endSession(): Outcome<Unit> = localOutcome {
         preferences.clearHostSession()
-        return Outcome.Success(Unit)
     }
 }

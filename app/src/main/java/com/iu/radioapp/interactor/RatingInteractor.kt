@@ -82,10 +82,10 @@ class RatingInteractor @Inject constructor(
 
     suspend fun retry(idempotencyKey: String): Outcome<Unit> {
         val outcome = ratings.retry(idempotencyKey)
-        if (outcome is Outcome.Success) deliveryScheduler.schedule()
+        if (outcome is Outcome.Success) deliveryScheduler.scheduleImmediately()
         return outcome
     }
 
     /** Station rejections arrive here as REJECTED with their reason. */
-    fun observeDeliveries(): Flow<List<OutboxEntry>> = ratings.observeDeliveries()
+    fun observeDeliveries(): Flow<Outcome<List<OutboxEntry>>> = ratings.observeDeliveries()
 }

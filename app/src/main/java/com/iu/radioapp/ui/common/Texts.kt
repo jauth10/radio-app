@@ -15,6 +15,7 @@ fun failureText(failure: Failure): String = when (failure) {
     Failure.Server -> stringResource(R.string.failure_server)
     Failure.Unauthorized -> stringResource(R.string.failure_unauthorized)
     is Failure.Rejected -> stringResource(R.string.failure_rejected, failure.reason)
+    Failure.Local -> stringResource(R.string.failure_local)
 }
 
 @Composable

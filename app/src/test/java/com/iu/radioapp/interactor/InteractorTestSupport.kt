@@ -5,6 +5,7 @@ import com.iu.radioapp.data.local.FakePlaybackHistoryDao
 import com.iu.radioapp.data.local.FakeSongRequestDao
 import com.iu.radioapp.data.local.FakeTrackCacheDao
 import com.iu.radioapp.data.local.InMemoryLocalStore
+import com.iu.radioapp.data.local.LocalFault
 import com.iu.radioapp.data.local.inMemoryUserPreferences
 import com.iu.radioapp.data.remote.s1playout.FakePlayoutDataSource
 import com.iu.radioapp.data.remote.s2archive.FakeArchiveDataSource
@@ -25,8 +26,15 @@ class RecordingDeliveryScheduler : DeliveryScheduler {
     var calls = 0
         private set
 
+    var immediateCalls = 0
+        private set
+
     override fun schedule() {
         calls++
+    }
+
+    override fun scheduleImmediately() {
+        immediateCalls++
     }
 }
 
@@ -36,12 +44,13 @@ class InteractorFixture(val clock: MutableClock = MutableClock()) {
     val requests = FakeRequestsDataSource()
     val feedback = FakeFeedbackDataSource(clock)
     val ratingEvents = FakeRatingEventDataSource()
+    val localFault = LocalFault()
     val store = InMemoryLocalStore()
-    val outboxDao = FakeOutboxDao(store)
-    val songRequestDao = FakeSongRequestDao(store)
-    val trackCacheDao = FakeTrackCacheDao()
-    val historyDao = FakePlaybackHistoryDao()
-    val preferences = inMemoryUserPreferences()
+    val outboxDao = FakeOutboxDao(store, localFault)
+    val songRequestDao = FakeSongRequestDao(store, localFault)
+    val trackCacheDao = FakeTrackCacheDao(localFault)
+    val historyDao = FakePlaybackHistoryDao(localFault)
+    val preferences = inMemoryUserPreferences(localFault)
     val scheduler = RecordingDeliveryScheduler()
 
     val trackRepository = TrackRepository(playout, trackCacheDao, historyDao, clock)

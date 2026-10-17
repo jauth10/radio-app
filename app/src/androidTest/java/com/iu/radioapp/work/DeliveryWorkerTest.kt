@@ -76,7 +76,7 @@ class DeliveryWorkerTest {
                     appContext: Context,
                     workerClassName: String,
                     workerParameters: WorkerParameters,
-                ): ListenableWorker = DeliveryWorker(appContext, workerParameters, songRequests, ratings)
+                ): ListenableWorker = DeliveryWorker(appContext, workerParameters, songRequests, ratings, DeliveryRunLock())
             })
             .build()
 

@@ -16,13 +16,16 @@ class DeliveryWorker @AssistedInject constructor(
     @Assisted params: WorkerParameters,
     private val songRequests: SongRequestRepository,
     private val ratings: RatingRepository,
+    private val runLock: DeliveryRunLock,
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
-        val results = listOf(
-            captureDelivery { songRequests.deliverOpen() },
-            captureDelivery { ratings.deliverOpen() },
-        )
+        val results = runLock.exclusive {
+            listOf(
+                captureDelivery { songRequests.deliverOpen() },
+                captureDelivery { ratings.deliverOpen() },
+            )
+        }
         results.mapNotNull { it.exceptionOrNull() }.forEach { Log.e(TAG, "delivery run failed locally", it) }
         return when (nextRunAfter(results)) {
             NextRun.DONE -> Result.success()

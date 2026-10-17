@@ -1,5 +1,6 @@
 package com.iu.radioapp.interactor
 
+import com.iu.radioapp.repository.firstValue
 import com.iu.radioapp.domain.DeliveryStatus
 import com.iu.radioapp.domain.Failure
 import com.iu.radioapp.domain.Outcome
@@ -34,7 +35,7 @@ class RatingInteractorTest {
     private suspend fun rate(target: RatingTarget = RatingTarget.PLAYLIST, value: Int = 4): Rating =
         (interactor.submitRating(target, value, comment = null) as Submission.Queued).value
 
-    private suspend fun deliveries() = interactor.observeDeliveries().first()
+    private suspend fun deliveries() = interactor.observeDeliveries().firstValue()
 
     private suspend fun cachedContextAfter(age: Duration): RatingContext {
         context()
@@ -145,6 +146,19 @@ class RatingInteractorTest {
     }
 
     @Test
+    fun `queuing waits its turn, a manual retry is delivered immediately`() = runTest {
+        val rating = rate()
+        fixture.feedback.nextFailure = Failure.Server
+        fixture.feedback.failureRepeatCount = 5
+        repeat(5) { repository.deliverOpen() }
+
+        interactor.retry(rating.idempotencyKey)
+
+        assertEquals(1, scheduler.calls)
+        assertEquals(1, scheduler.immediateCalls)
+    }
+
+    @Test
     fun `key stays stable through failed attempts and manual retry`() = runTest {
         val rating = rate()
         fixture.feedback.nextFailure = Failure.Connection
@@ -155,7 +169,8 @@ class RatingInteractorTest {
         assertEquals(Outcome.Success(Unit), interactor.retry(rating.idempotencyKey))
         repository.deliverOpen()
 
-        assertEquals(2, scheduler.calls)
+        assertEquals(1, scheduler.calls)
+        assertEquals(1, scheduler.immediateCalls)
         val delivered = deliveries().single()
         assertEquals(rating.idempotencyKey, delivered.idempotencyKey)
         assertEquals(DeliveryStatus.DELIVERED, delivered.status)

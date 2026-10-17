@@ -112,7 +112,7 @@ class TrackRepositoryTest {
         assertEquals(Outcome.Success(Unit), repository.refreshHistory(limit = 10))
 
         repository.observeHistory().test {
-            assertEquals(listOf("trk-1", "trk-2", "trk-3"), awaitItem().map { it.track.trackId })
+            assertEquals(listOf("trk-1", "trk-2", "trk-3"), awaitItem().successValue.map { it.track.trackId })
         }
     }
 

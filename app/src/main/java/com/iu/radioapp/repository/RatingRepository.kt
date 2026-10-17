@@ -51,7 +51,7 @@ class RatingRepository @Inject constructor(
     private val clock: Clock,
 ) {
 
-    suspend fun enqueue(rating: Rating): Outcome<Unit> {
+    suspend fun enqueue(rating: Rating): Outcome<Unit> = localOutcome {
         outboxDao.insert(
             OutboxEntity(
                 idempotencyKey = rating.idempotencyKey,
@@ -63,7 +63,6 @@ class RatingRepository @Inject constructor(
                 rejectionReason = null,
             )
         )
-        return Outcome.Success(Unit)
     }
 
     suspend fun deliverOpen(): Outcome<Unit> = outboxDao.deliverOpenEntries(
@@ -76,9 +75,8 @@ class RatingRepository @Inject constructor(
         onRejected = { entry, reason -> outboxDao.markRejected(entry.id, reason) },
     )
 
-    suspend fun retry(idempotencyKey: String): Outcome<Unit> {
+    suspend fun retry(idempotencyKey: String): Outcome<Unit> = localOutcome {
         outboxDao.reopenIfFailed(idempotencyKey)
-        return Outcome.Success(Unit)
     }
 
     suspend fun getAggregate(showId: String): Outcome<RatingAggregate> =
@@ -87,10 +85,10 @@ class RatingRepository @Inject constructor(
     suspend fun getRatingsSince(since: Instant, showId: String, token: String): Outcome<List<RatingEvent>> =
         feedback.getRatingsSince(since, showId, token).map { events -> events.map { it.toDomain() } }
 
-    fun observeDeliveries(): Flow<List<OutboxEntry>> =
+    fun observeDeliveries(): Flow<Outcome<List<OutboxEntry>>> =
         outboxDao.observeAll().map { entries ->
             entries.filter { it.operation == OperationType.RATING }.map { it.toDomain() }
-        }
+        }.asLocalOutcomes()
 
     /**
      * Event channel and polling fallback as one stream, starting with the ratings received since [since].
