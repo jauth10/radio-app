@@ -22,14 +22,25 @@ import stubserver.s4feedback.eventsRoutes
 import stubserver.s4feedback.feedbackRoutes
 
 /**
- * Bound to all interfaces so the Android emulator's host alias (10.0.2.2)
- * can reach it without extra configuration; see the startup guide (RAD-21).
+ * Bound to all interfaces so the Android emulator's host alias (10.0.2.2) and
+ * devices in the same network can reach it; see README.md (RAD-21). Port 8080
+ * is common on development machines, so the environment variable [PORT_VARIABLE]
+ * moves it elsewhere (then point "adb reverse" at the new host port).
  */
-private const val PORT = 8080
+private const val DEFAULT_PORT = 8080
+private const val PORT_VARIABLE = "STUB_PORT"
 
 fun main() {
-    embeddedServer(Netty, port = PORT, host = "0.0.0.0", module = Application::module)
+    embeddedServer(Netty, port = stubPort(System.getenv(PORT_VARIABLE)), host = "0.0.0.0", module = Application::module)
         .start(wait = true)
+}
+
+/** A value that is set but unusable fails loudly instead of quietly falling back to the busy default. */
+internal fun stubPort(value: String?): Int {
+    if (value.isNullOrBlank()) return DEFAULT_PORT
+    val port = value.trim().toIntOrNull()
+    require(port != null && port in 1..65_535) { "$PORT_VARIABLE must be a port number from 1 to 65535, was '$value'" }
+    return port
 }
 
 fun Application.module() {

@@ -21,11 +21,17 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // 10.0.2.2 is the Android emulator's alias for the host machine, where
-        // the stub server (RAD-12/13) listens on 0.0.0.0:8080. Overridable per
-        // build type/flavor for a physical device or a different host - see the
-        // startup guide (RAD-21).
-        buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:8080/\"")
+        // Default: loopback, reached through "adb reverse tcp:8080 tcp:8080" - on
+        // Android 17 the emulator alias 10.0.2.2 needs the local network
+        // permission, loopback does not. Override with -PapiBaseUrl=... for
+        // another host (10.0.2.2 on older emulators, a LAN address for a device
+        // without adb); see README.md (RAD-21).
+        val apiBaseUrl = providers.gradleProperty("apiBaseUrl").getOrElse("http://127.0.0.1:8080/")
+        // Checked here: an empty value or a quote would otherwise surface as a broken URL at runtime or a javac error.
+        require(Regex("""https?://[^\s"\\]+""").matches(apiBaseUrl)) {
+            "apiBaseUrl must be an http(s) URL such as http://127.0.0.1:8080/, was '$apiBaseUrl'"
+        }
+        buildConfigField("String", "API_BASE_URL", "\"${apiBaseUrl.trimEnd('/')}/\"")
     }
 
     buildTypes {

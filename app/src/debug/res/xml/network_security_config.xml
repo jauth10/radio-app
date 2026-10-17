@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Debug builds only (replaces the file of the same name in src/main): any host
+    may be reached over plain HTTP, so -PapiBaseUrl=http://<address of the PC>:8080/
+    works for a device without adb. The stub server is local, unencrypted test
+    infrastructure; release builds keep the restricted configuration.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

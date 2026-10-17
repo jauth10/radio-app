@@ -5,6 +5,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCallPipeline
 import io.ktor.server.application.call
+import io.ktor.server.netty.NettyApplicationCall
 import io.ktor.server.request.path
 import kotlinx.coroutines.delay
 import stubserver.common.respondError
@@ -47,6 +48,19 @@ fun Application.installFailureInjection() {
                 "Simulierte abgelaufene Sitzung (Stub-Steuerung)",
                 retryable = false,
             )
+            ErrorCode.OFFLINE -> {
+                val netty = call as? NettyApplicationCall
+                if (netty != null) {
+                    netty.context.close()
+                } else {
+                    // Only the Netty engine has a connection to drop; the in-process test host does not.
+                    call.respondError(
+                        HttpStatusCode.ServiceUnavailable,
+                        "Simulierter Verbindungsabbruch (Stub-Steuerung)",
+                        retryable = true,
+                    )
+                }
+            }
             ErrorCode.TIMEOUT -> {
                 delay(failure.durationMs)
                 call.respondError(

@@ -30,8 +30,11 @@ import com.iu.radioapp.ui.host.HostFeedScreen
 import com.iu.radioapp.ui.host.HostFeedTags
 import com.iu.radioapp.ui.host.HostFeedUiState
 import com.iu.radioapp.ui.host.HostFeedView
+import com.iu.radioapp.ui.host.LatencyRecorder
 import com.iu.radioapp.ui.theme.RadioAppTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -163,6 +166,30 @@ class HostFeedScreenTest {
 
         compose.onNodeWithTag(HostFeedTags.EMPTY).assertIsDisplayed()
         compose.onNodeWithTag(HostFeedTags.NUMBERS).assertIsDisplayed()
+    }
+
+    @Test
+    fun latency_is_reported_for_drawn_rows_only() {
+        val displayed = mutableSetOf<String>()
+        val latency = object : LatencyRecorder {
+            override fun onListed(ratings: List<ReceivedRating>) = Unit
+            override fun onDisplayed(received: ReceivedRating) {
+                displayed += received.rating.ratingId
+            }
+        }
+        val ratings = (1..30).map { rating(id = "rat-$it") }
+        compose.setContent {
+            RadioAppTheme { HostFeedScreen(HostFeedUiState.Content(view(ratings = ratings)), onSignOut = {}, latency = latency) }
+        }
+        compose.waitForIdle()
+
+        assertTrue("rat-1" in displayed)
+        assertFalse("rat-30" in displayed)
+
+        compose.onNode(hasScrollAction()).performScrollToNode(hasTestTag(HostFeedTags.rating("rat-30")))
+        compose.waitForIdle()
+
+        assertTrue("rat-30" in displayed)
     }
 
     @Test
