@@ -15,9 +15,11 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -46,11 +48,11 @@ object HostFeedTags {
 @Composable
 fun HostFeedRoute(viewModel: HostFeedViewModel) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    HostFeedScreen(state = state, onSignOut = viewModel::signOut)
+    HostFeedScreen(state = state, onSignOut = viewModel::signOut, latency = LocalLatencyRecorder.current)
 }
 
 @Composable
-fun HostFeedScreen(state: HostFeedUiState, onSignOut: () -> Unit) {
+fun HostFeedScreen(state: HostFeedUiState, onSignOut: () -> Unit, latency: LatencyRecorder = NoLatencyRecorder) {
     val view = when (state) {
         HostFeedUiState.Loading -> {
             LoadingView()
@@ -61,6 +63,7 @@ fun HostFeedScreen(state: HostFeedUiState, onSignOut: () -> Unit) {
         is HostFeedUiState.Offline -> state.view
         is HostFeedUiState.Error -> state.view
     }
+    SideEffect { latency.onListed(view.ratings) }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
@@ -79,7 +82,7 @@ fun HostFeedScreen(state: HostFeedUiState, onSignOut: () -> Unit) {
                 Text(stringResource(R.string.host_ratings_empty), modifier = Modifier.testTag(HostFeedTags.EMPTY))
             }
         }
-        items(view.ratings, key = { it.rating.ratingId }) { RatingRow(it) }
+        items(view.ratings, key = { it.rating.ratingId }) { RatingRow(it, latency) }
         item {
             OutlinedButton(onClick = onSignOut, modifier = Modifier.testTag(HostFeedTags.SIGN_OUT)) {
                 Text(stringResource(R.string.action_logout))
@@ -148,9 +151,18 @@ private fun NumbersText(numbers: RatingAggregate) {
 private fun average(value: Double): String = String.format(Locale.GERMANY, "%.1f", value)
 
 @Composable
-private fun RatingRow(received: ReceivedRating) {
+private fun RatingRow(received: ReceivedRating, latency: LatencyRecorder) {
     val rating = received.rating
-    Card(modifier = Modifier.fillMaxWidth().testTag(HostFeedTags.rating(rating.ratingId))) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            // t1 of the latency measurement: lazy rows are only drawn while on screen (RAD-18).
+            .drawWithContent {
+                drawContent()
+                latency.onDisplayed(received)
+            }
+            .testTag(HostFeedTags.rating(rating.ratingId))
+    ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(
