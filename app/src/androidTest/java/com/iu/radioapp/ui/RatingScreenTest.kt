@@ -14,6 +14,7 @@ import com.iu.radioapp.R
 import com.iu.radioapp.domain.DeliveryStatus
 import com.iu.radioapp.domain.Rating
 import com.iu.radioapp.domain.RatingTarget
+import com.iu.radioapp.domain.RatingWithDelivery
 import com.iu.radioapp.domain.RefusalReason
 import com.iu.radioapp.ui.common.StateTags
 import com.iu.radioapp.ui.rating.RatingPanel
@@ -23,6 +24,7 @@ import com.iu.radioapp.ui.rating.RatingUiState
 import com.iu.radioapp.ui.rating.SubmittedRating
 import com.iu.radioapp.ui.theme.RadioAppTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -38,6 +40,7 @@ class RatingScreenTest {
     private var submits = 0
     private var retries = 0
     private val retriedKeys = mutableListOf<String>()
+    private val dismissedKeys = mutableListOf<String>()
 
     private fun show(state: RatingUiState) = compose.setContent {
         RadioAppTheme {
@@ -49,6 +52,7 @@ class RatingScreenTest {
                 onReload = {},
                 onRetryDelivery = { retries++ },
                 onRetryFailed = { retriedKeys += it },
+                onDismissRejected = { dismissedKeys += it },
             )
         }
     }
@@ -148,12 +152,27 @@ class RatingScreenTest {
     @Test
     fun ak_2_8_failed_rating_from_an_earlier_visit_can_be_resent_by_hand() {
         val earlier = Rating("key-old", null, RatingTarget.PLAYLIST, "show-1", 3, "Zu laut", T0, "listener-1", null)
-        show(RatingUiState.Content(panel(), submitted = null, failed = listOf(earlier)))
+        val undelivered = listOf(RatingWithDelivery(earlier, DeliveryStatus.FAILED, null))
+        show(RatingUiState.Content(panel(), submitted = null, undelivered = undelivered))
 
-        compose.onNodeWithText(str(R.string.rating_failed_title)).assertIsDisplayed()
+        compose.onNodeWithText(str(R.string.rating_undelivered_title)).assertIsDisplayed()
         compose.onNodeWithText("Zu laut").assertIsDisplayed()
+        compose.onNodeWithTag(RatingTags.DISMISS_REJECTED).assertDoesNotExist()
         compose.onNodeWithTag(RatingTags.RETRY_FAILED).performClick()
         assertEquals(listOf("key-old"), retriedKeys)
+    }
+
+    @Test
+    fun ak_2_7_rejected_rating_from_an_earlier_visit_shows_its_reason_and_can_be_dismissed() {
+        val earlier = Rating("key-old", null, RatingTarget.PLAYLIST, "show-1", 3, null, T0, "listener-1", null)
+        val undelivered = listOf(RatingWithDelivery(earlier, DeliveryStatus.REJECTED, "Bereits bewertet"))
+        show(RatingUiState.Content(panel(), submitted = null, undelivered = undelivered))
+
+        compose.onNodeWithText(str(R.string.delivery_rejected, "Bereits bewertet")).assertIsDisplayed()
+        compose.onNodeWithTag(RatingTags.RETRY_FAILED).assertDoesNotExist()
+        compose.onNodeWithTag(RatingTags.DISMISS_REJECTED).performClick()
+        assertEquals(listOf("key-old"), dismissedKeys)
+        assertTrue(retriedKeys.isEmpty())
     }
 
     @Test

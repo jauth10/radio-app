@@ -63,7 +63,7 @@ class LocalFailureTest {
         assertEquals(listOf(local), songRequests.observeRequests("listener-1").toList())
         assertEquals(listOf(local), songRequests.observeDeliveries().toList())
         assertEquals(listOf(local), ratings.observeDeliveries().toList())
-        assertEquals(listOf(local), ratings.observeFailedRatings().toList())
+        assertEquals(listOf(local), ratings.observeUndeliveredRatings().toList())
     }
 
     @Test

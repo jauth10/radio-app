@@ -37,6 +37,8 @@ class RatingInteractorTest {
 
     private suspend fun deliveries() = interactor.observeDeliveries().firstValue()
 
+    private suspend fun undelivered(target: RatingTarget) = interactor.observeUndeliveredRatings(target).firstValue()
+
     private suspend fun cachedContextAfter(age: Duration): RatingContext {
         context()
         fixture.clock.instant = TEST_NOW + age
@@ -166,13 +168,31 @@ class RatingInteractorTest {
         fixture.feedback.failureRepeatCount = 10
         repeat(5) { repository.deliverOpen() }
 
-        assertEquals(listOf(playlist), interactor.observeFailedRatings(RatingTarget.PLAYLIST).firstValue())
-        assertEquals(listOf(host), interactor.observeFailedRatings(RatingTarget.HOST).firstValue())
+        assertEquals(listOf(playlist), undelivered(RatingTarget.PLAYLIST).map { it.rating })
+        assertEquals(listOf(host), undelivered(RatingTarget.HOST).map { it.rating })
 
         interactor.retry(playlist.idempotencyKey)
 
-        assertTrue(interactor.observeFailedRatings(RatingTarget.PLAYLIST).firstValue().isEmpty())
+        assertTrue(undelivered(RatingTarget.PLAYLIST).isEmpty())
         assertEquals(1, scheduler.immediateCalls)
+    }
+
+    @Test
+    fun `a rejected rating stays listed with its reason until dismissed`() = runTest {
+        val rating = rate()
+        fixture.feedback.nextFailure = Failure.Rejected(reason = "Bereits bewertet", retryable = true)
+        repository.deliverOpen()
+
+        val rejected = undelivered(RatingTarget.PLAYLIST).single()
+        assertEquals(rating, rejected.rating)
+        assertEquals(DeliveryStatus.REJECTED, rejected.status)
+        assertEquals("Bereits bewertet", rejected.rejectionReason)
+        assertTrue(undelivered(RatingTarget.HOST).isEmpty())
+
+        assertEquals(Outcome.Success(Unit), interactor.dismissRejected(rating.idempotencyKey))
+
+        assertTrue(undelivered(RatingTarget.PLAYLIST).isEmpty())
+        assertEquals(0, scheduler.immediateCalls)
     }
 
     @Test

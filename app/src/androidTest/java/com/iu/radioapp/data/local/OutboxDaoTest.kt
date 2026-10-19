@@ -345,6 +345,57 @@ class OutboxDaoTest {
     }
 
     @Test
+    fun dismissingARejectedRatingDeletesTheEntry() = runTest {
+        val entryId = outboxDao.insert(
+            outboxEntity(idempotencyKey = "key-1", operation = OperationType.RATING)
+        )
+        outboxDao.markRejected(entryId, reason = "already rated")
+
+        outboxDao.dismissRejectedRating(entryId)
+
+        assertNull(outboxDao.findEntry(entryId))
+    }
+
+    @Test
+    fun dismissingRefusesAFailedRating() = runTest {
+        val entryId = outboxDao.insert(
+            outboxEntity(
+                idempotencyKey = "key-1",
+                operation = OperationType.RATING,
+                attempts = 5,
+                status = DeliveryStatus.FAILED,
+            )
+        )
+
+        var thrown: Throwable? = null
+        try {
+            outboxDao.dismissRejectedRating(entryId)
+        } catch (e: IllegalArgumentException) {
+            thrown = e
+        }
+
+        assertNotNull("a failed rating must stay resendable", thrown)
+        assertEquals(DeliveryStatus.FAILED, outboxDao.findEntry(entryId)?.status)
+    }
+
+    @Test
+    fun dismissingRefusesARejectedSongRequest() = runTest {
+        songRequestDao.insert(songRequestEntity(idempotencyKey = "key-1"))
+        val entryId = outboxDao.insert(outboxEntity(idempotencyKey = "key-1"))
+        outboxDao.bookRejection(entryId, reason = "track not broadcastable")
+
+        var thrown: Throwable? = null
+        try {
+            outboxDao.dismissRejectedRating(entryId)
+        } catch (e: IllegalArgumentException) {
+            thrown = e
+        }
+
+        assertNotNull("a song request keeps its outbox entry", thrown)
+        assertEquals(DeliveryStatus.REJECTED, outboxDao.findEntry(entryId)?.status)
+    }
+
+    @Test
     fun recordingAnAttemptKeepsTheIdempotencyKeyAndCountsUp() = runTest {
         val entryId = outboxDao.insert(outboxEntity(idempotencyKey = "key-1"))
 

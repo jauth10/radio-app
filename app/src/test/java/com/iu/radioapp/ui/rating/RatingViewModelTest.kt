@@ -228,7 +228,7 @@ class RatingViewModelTest {
         earlier.viewModelScope.cancel()
 
         val later = start()
-        val failed = later.uiState.value.failed.single()
+        val failed = later.uiState.value.undelivered.single().rating
         assertEquals(4, failed.value)
         assertNull(later.uiState.value.submitted)
 
@@ -236,7 +236,7 @@ class RatingViewModelTest {
         runCurrent()
 
         assertEquals(DeliveryStatus.OPEN, later.uiState.value.submitted?.status)
-        assertTrue(later.uiState.value.failed.isEmpty())
+        assertTrue(later.uiState.value.undelivered.isEmpty())
         fixture.ratingRepository.deliverOpen()
         runCurrent()
         assertEquals(DeliveryStatus.DELIVERED, later.uiState.value.submitted?.status)
@@ -253,8 +253,27 @@ class RatingViewModelTest {
         runCurrent()
 
         assertEquals(DeliveryStatus.FAILED, playlist.uiState.value.submitted?.status)
-        assertTrue(playlist.uiState.value.failed.isEmpty())
-        assertTrue(host.uiState.value.failed.isEmpty())
+        assertTrue(playlist.uiState.value.undelivered.isEmpty())
+        assertTrue(host.uiState.value.undelivered.isEmpty())
+    }
+
+    @Test
+    fun `a rejection that arrives after leaving the screen is shown on the next visit until dismissed`() = runTest {
+        val earlier = start()
+        rate(earlier)
+        earlier.viewModelScope.cancel()
+        fixture.feedback.nextFailure = Failure.Rejected(reason = "Bereits bewertet", retryable = false)
+        fixture.ratingRepository.deliverOpen()
+
+        val later = start()
+        val rejected = later.uiState.value.undelivered.single()
+        assertEquals(DeliveryStatus.REJECTED, rejected.status)
+        assertEquals("Bereits bewertet", rejected.rejectionReason)
+
+        later.dismissRejected(rejected.rating.idempotencyKey)
+        runCurrent()
+
+        assertTrue(later.uiState.value.undelivered.isEmpty())
     }
 
     @Test

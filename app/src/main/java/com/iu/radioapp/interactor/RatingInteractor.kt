@@ -5,6 +5,7 @@ import com.iu.radioapp.domain.OutboxEntry
 import com.iu.radioapp.domain.Rating
 import com.iu.radioapp.domain.RatingContext
 import com.iu.radioapp.domain.RatingTarget
+import com.iu.radioapp.domain.RatingWithDelivery
 import com.iu.radioapp.domain.ReadResult
 import com.iu.radioapp.domain.RefusalReason
 import com.iu.radioapp.domain.Submission
@@ -90,7 +91,11 @@ class RatingInteractor @Inject constructor(
     /** Station rejections arrive here as REJECTED with their reason. */
     fun observeDeliveries(): Flow<Outcome<List<OutboxEntry>>> = ratings.observeDeliveries()
 
-    /** Failed ratings outlive the screen they were given on, so a manual retry stays possible (AK 2.8). */
-    fun observeFailedRatings(target: RatingTarget): Flow<Outcome<List<Rating>>> =
-        ratings.observeFailedRatings().map { outcome -> outcome.map { list -> list.filter { it.target == target } } }
+    /** Outlive the screen they were given on: a failed rating stays resendable, a rejected one keeps its reason. */
+    fun observeUndeliveredRatings(target: RatingTarget): Flow<Outcome<List<RatingWithDelivery>>> =
+        ratings.observeUndeliveredRatings().map { outcome ->
+            outcome.map { list -> list.filter { it.rating.target == target } }
+        }
+
+    suspend fun dismissRejected(idempotencyKey: String): Outcome<Unit> = ratings.dismissRejected(idempotencyKey)
 }

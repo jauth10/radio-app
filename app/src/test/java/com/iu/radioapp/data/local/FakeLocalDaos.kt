@@ -66,6 +66,10 @@ class FakeOutboxDao(
     override suspend fun setRejected(entryId: Long, status: DeliveryStatus, reason: String) =
         update(entryId) { it.copy(status = status, rejectionReason = reason) }
 
+    override suspend fun deleteEntry(entryId: Long) {
+        store.outbox.value = store.outbox.value.filter { it.id != entryId }
+    }
+
     override suspend fun insertRequest(request: SongRequestEntity) {
         check(store.songRequests.value.none { it.idempotencyKey == request.idempotencyKey }) {
             "UNIQUE constraint failed: song_request.idempotency_key"

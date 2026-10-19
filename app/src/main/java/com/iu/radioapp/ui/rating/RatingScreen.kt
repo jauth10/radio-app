@@ -33,8 +33,8 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.iu.radioapp.R
 import com.iu.radioapp.domain.DeliveryStatus
-import com.iu.radioapp.domain.Rating
 import com.iu.radioapp.domain.RatingTarget
+import com.iu.radioapp.domain.RatingWithDelivery
 import com.iu.radioapp.domain.RefusalReason
 import com.iu.radioapp.ui.common.LoadingView
 import com.iu.radioapp.ui.common.MessageView
@@ -50,8 +50,9 @@ object RatingTags {
     const val COMMENT = "rating_comment"
     const val STATUS = "rating_status"
     const val RETRY = "rating_retry"
-    const val FAILED_ROW = "rating_failed_row"
+    const val UNDELIVERED_ROW = "rating_undelivered_row"
     const val RETRY_FAILED = "rating_retry_failed"
+    const val DISMISS_REJECTED = "rating_dismiss_rejected"
     fun value(value: Int) = "rating_value_$value"
 }
 
@@ -87,6 +88,7 @@ fun RatingRoute(target: RatingTarget) {
         onReload = viewModel::reload,
         onRetryDelivery = viewModel::retryDelivery,
         onRetryFailed = viewModel::retryFailed,
+        onDismissRejected = viewModel::dismissRejected,
     )
 }
 
@@ -99,6 +101,7 @@ fun RatingScreen(
     onReload: () -> Unit,
     onRetryDelivery: () -> Unit,
     onRetryFailed: (String) -> Unit = {},
+    onDismissRejected: (String) -> Unit = {},
 ) {
     if (state is RatingUiState.Loading) {
         LoadingView()
@@ -153,19 +156,23 @@ fun RatingScreen(
                 }
             }
         }
-        if (state.failed.isNotEmpty()) FailedRatingsCard(state.failed, onRetryFailed)
+        if (state.undelivered.isNotEmpty()) UndeliveredRatingsCard(state.undelivered, onRetryFailed, onDismissRejected)
     }
 }
 
-// Failed ratings from earlier visits or before a restart; never dropped without a way to resend (AK 2.8).
+// Ratings from earlier visits or before a restart: a failed one stays until resent, a rejected one until dismissed.
 @Composable
-private fun FailedRatingsCard(failed: List<Rating>, onRetry: (String) -> Unit) {
+private fun UndeliveredRatingsCard(
+    undelivered: List<RatingWithDelivery>,
+    onRetry: (String) -> Unit,
+    onDismiss: (String) -> Unit,
+) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(stringResource(R.string.rating_failed_title), style = MaterialTheme.typography.labelLarge)
-            failed.forEach { rating ->
+            Text(stringResource(R.string.rating_undelivered_title), style = MaterialTheme.typography.labelLarge)
+            undelivered.forEach { (rating, status, rejectionReason) ->
                 Row(
-                    modifier = Modifier.fillMaxWidth().testTag(RatingTags.FAILED_ROW),
+                    modifier = Modifier.fillMaxWidth().testTag(RatingTags.UNDELIVERED_ROW),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
@@ -175,9 +182,16 @@ private fun FailedRatingsCard(failed: List<Rating>, onRetry: (String) -> Unit) {
                             style = MaterialTheme.typography.bodySmall,
                         )
                         rating.comment?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                        Text(deliveryText(status, rejectionReason), style = MaterialTheme.typography.bodySmall)
                     }
-                    TextButton(onClick = { onRetry(rating.idempotencyKey) }, modifier = Modifier.testTag(RatingTags.RETRY_FAILED)) {
-                        Text(stringResource(R.string.action_retry_delivery))
+                    if (status == DeliveryStatus.REJECTED) {
+                        TextButton(onClick = { onDismiss(rating.idempotencyKey) }, modifier = Modifier.testTag(RatingTags.DISMISS_REJECTED)) {
+                            Text(stringResource(R.string.action_dismiss))
+                        }
+                    } else {
+                        TextButton(onClick = { onRetry(rating.idempotencyKey) }, modifier = Modifier.testTag(RatingTags.RETRY_FAILED)) {
+                            Text(stringResource(R.string.action_retry_delivery))
+                        }
                     }
                 }
             }

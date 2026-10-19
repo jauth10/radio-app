@@ -17,6 +17,7 @@ import com.iu.radioapp.domain.Rating
 import com.iu.radioapp.domain.RatingAggregate
 import com.iu.radioapp.domain.RatingEvent
 import com.iu.radioapp.domain.RatingFeedSignal
+import com.iu.radioapp.domain.RatingWithDelivery
 import com.iu.radioapp.domain.ReceivedRating
 import com.iu.radioapp.domain.map
 import com.iu.radioapp.repository.mapping.toDomain
@@ -92,15 +93,22 @@ class RatingRepository @Inject constructor(
         }.asLocalOutcomes()
 
     /**
-     * Newest first; read back from the stored payload, since ratings have no table of their own.
-     * An unreadable payload is skipped: it could never be resent, and it must not block the readable ones.
+     * Failed and rejected ratings, newest first; read back from the stored payload, since ratings have no table of
+     * their own. An unreadable payload is skipped: it could never be resent, and it must not block the readable ones.
      */
-    fun observeFailedRatings(): Flow<Outcome<List<Rating>>> =
-        outboxDao.observeByStatus(DeliveryStatus.FAILED).map { entries ->
-            entries.filter { it.operation == OperationType.RATING }
+    fun observeUndeliveredRatings(): Flow<Outcome<List<RatingWithDelivery>>> =
+        outboxDao.observeAll().map { entries ->
+            entries.filter { it.operation == OperationType.RATING && it.status in UNDELIVERED }
                 .sortedByDescending { it.id }
-                .mapNotNull { it.toRatingOrNull() }
+                .mapNotNull { entry ->
+                    entry.toRatingOrNull()?.let { RatingWithDelivery(it, entry.status, entry.rejectionReason) }
+                }
         }.asLocalOutcomes()
+
+    suspend fun dismissRejected(idempotencyKey: String): Outcome<Unit> = localOutcome {
+        val entry = outboxDao.findByIdempotencyKey(idempotencyKey)
+        if (entry?.status == DeliveryStatus.REJECTED) outboxDao.dismissRejectedRating(entry.id)
+    }
 
     private fun OutboxEntity.toRatingOrNull(): Rating? =
         try {
@@ -257,5 +265,6 @@ class RatingRepository @Inject constructor(
         val CONFIRMATION_DELAY = 1.seconds
         val POLL_OVERLAP = 30.seconds
         val INITIAL_LOOKBACK = 1.minutes
+        private val UNDELIVERED = setOf(DeliveryStatus.FAILED, DeliveryStatus.REJECTED)
     }
 }

@@ -18,6 +18,7 @@
     <string name="state_loading">Wird geladen …</string>
     <string name="action_reload">Erneut laden</string>
     <string name="action_retry_delivery">Erneut senden</string>
+    <string name="action_dismiss">Ausblenden</string>
     <string name="offline_title">Keine Verbindung</string>
     <string name="offline_no_data">Der Sender ist nicht erreichbar, und es liegt noch kein gespeicherter Stand vor.</string>
     <string name="error_title">Etwas ist schiefgelaufen</string>
@@ -77,7 +78,7 @@
     <string name="action_submit_rating">Bewertung absenden</string>
     <string name="rating_locked">Du hast in dieser Sitzung bereits bewertet.</string>
     <string name="rating_status_title">Deine abgegebene Bewertung</string>
-    <string name="rating_failed_title">Nicht zugestellte Bewertungen</string>
+    <string name="rating_undelivered_title">Nicht zugestellte Bewertungen</string>
     <string name="rating_created_at">abgegeben um %1$s</string>
     <string name="rating_offline_hint">Keine Verbindung. Die Bewertung wird vorgemerkt und gesendet, sobald eine Verbindung besteht.</string>
     <string name="rating_value_description">%1$d von 5</string>
