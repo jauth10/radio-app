@@ -12,6 +12,7 @@ import androidx.work.WorkManager
 import androidx.work.testing.SynchronousExecutor
 import androidx.work.testing.WorkManagerTestInitHelper
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -58,12 +59,13 @@ class WorkManagerDeliverySchedulerTest {
     fun scheduleImmediatelyReplacesThePendingChainWithAFreshRun() {
         scheduler.schedule()
         scheduler.schedule()
+        val pendingChain = deliveryWork().map { it.id }
 
         scheduler.scheduleImmediately()
 
-        val (finished, pending) = deliveryWork().partition { it.state.isFinished }
-        assertEquals(listOf(WorkInfo.State.CANCELLED, WorkInfo.State.CANCELLED), finished.map { it.state })
-        val fresh = pending.single()
+        // REPLACE cancels and deletes the pending chain, so only the fresh run is left.
+        val fresh = deliveryWork().single()
+        assertFalse(fresh.id in pendingChain)
         assertEquals(WorkInfo.State.ENQUEUED, fresh.state)
         assertEquals(0, fresh.runAttemptCount)
         assertEquals(0L, fresh.initialDelayMillis)
