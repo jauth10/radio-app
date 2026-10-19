@@ -113,7 +113,8 @@ curl -X POST http://127.0.0.1:8080/ratings -H "Content-Type: application/json" -
 
 - Stub-Server (Routen S1 bis S4, Idempotenz, Ereigniskanal, Fehlerbilder): `./gradlew :stub-server:test`
 - Unit-Tests der App: `./gradlew :app:testDebugUnitTest` (braucht das Android SDK)
-- Oberflächentests der App: `./gradlew :app:connectedDebugAndroidTest` (braucht Emulator oder Gerät)
+- Oberflächentests der App: `./gradlew :app:connectedDebugAndroidTest` (braucht Emulator oder Gerät). Sie umfassen die Compose-Tests je Screen, die DAO- und WorkManager-Tests und die durchgehenden Abläufe je User Story (`app/src/androidTest/…/journey/`), die statt der Sendersysteme die Fakes aus `app/src/sharedTest` nutzen.
+- Testabdeckung: `./gradlew :app:debugCoverageReport` führt Unit- und Oberflächentests aus und schreibt einen gemeinsamen Bericht als HTML und XML nach `app/build/reports/jacoco/debugCoverageReport/` (braucht Emulator oder Gerät).
 
 ## Fehlersuche
 
