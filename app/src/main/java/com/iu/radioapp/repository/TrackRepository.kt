@@ -48,11 +48,7 @@ class TrackRepository @Inject constructor(
         when (val outcome = playout.getHistory(limit)) {
             is Outcome.Success -> localOutcome {
                 // S1 history carries no showId; a known playback must not lose the one it has.
-                val known = historyDao.observeHistory().first().map { it.playbackId }.toSet()
-                outcome.value
-                    .map { it.toPlayback().toHistoryEntity() }
-                    .filter { it.playbackId !in known }
-                    .forEach { historyDao.appendAndTrim(it) }
+                historyDao.addMissingAndTrim(outcome.value.map { it.toPlayback().toHistoryEntity() })
             }
             is Outcome.Error -> outcome
         }

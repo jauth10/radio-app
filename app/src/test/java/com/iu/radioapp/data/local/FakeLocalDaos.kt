@@ -170,6 +170,12 @@ class FakePlaybackHistoryDao(private val fault: LocalFault = LocalFault()) : Pla
         rows.value = sorted(rows.value.filter { it.playbackId != entry.playbackId } + entry)
     }
 
+    override suspend fun insertMissing(entries: List<PlaybackHistoryEntity>) {
+        fault.check()
+        val known = rows.value.map { it.playbackId }.toSet()
+        rows.value = sorted(rows.value + entries.filter { it.playbackId !in known }.distinctBy { it.playbackId })
+    }
+
     override suspend fun trimToLimit(limit: Int) {
         rows.value = rows.value.take(limit)
     }
