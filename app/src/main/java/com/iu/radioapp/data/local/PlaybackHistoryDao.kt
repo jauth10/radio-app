@@ -81,7 +81,7 @@ abstract class PlaybackHistoryDao {
     abstract suspend fun deleteAll()
 
     companion object {
-        /** Assumption 11: the local history holds at most 50 tracks. */
+        /** The local history holds at most 50 tracks. */
         const val HISTORY_LIMIT = 50
     }
 }

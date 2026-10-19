@@ -71,7 +71,7 @@ android {
 
 ksp {
     // Room writes the schema of every version here. The JSON is committed so a
-    // later migration can be diffed against a recorded schema (decision E20).
+    // later migration can be diffed against a recorded schema.
     arg("room.schemaLocation", "$projectDir/schemas")
 }
 

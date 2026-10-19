@@ -36,8 +36,8 @@ fun Playback.toHistoryEntity(): PlaybackHistoryEntity = PlaybackHistoryEntity(
 )
 
 /**
- * The id an airing gets on this device, built from track and start time
- * (assumption 41): no S1 endpoint hands one out, and the pair is unique as long
+ * The id an airing gets on this device, built from track and start time:
+ * no S1 endpoint hands one out, and the pair is unique as long
  * as the same track does not start twice in the same instant.
  */
 fun playbackIdOf(trackId: String, startedAt: Instant): String =
