@@ -23,7 +23,8 @@ android {
         versionCode = 1
         versionName = "1.0"
 
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // Starts HiltTestApplication so the journey tests can replace Hilt modules.
+        testInstrumentationRunner = "com.iu.radioapp.HiltTestRunner"
 
         // Default: loopback, reached through "adb reverse tcp:8080 tcp:8080" - on
         // Android 17 the emulator alias 10.0.2.2 needs the local network
@@ -39,7 +40,7 @@ android {
     }
 
     buildTypes {
-        // Coverage of unit and instrumented tests, merged by debugCoverageReport (RAD-20, E78).
+        // Coverage of unit and instrumented tests, merged by debugCoverageReport.
         debug {
             enableUnitTestCoverage = true
             enableAndroidTestCoverage = true
@@ -61,6 +62,11 @@ android {
     testCoverage {
         jacocoVersion = libs.versions.jacoco.get()
     }
+    // The data source fakes serve unit tests and on-device journey tests alike.
+    sourceSets {
+        getByName("test").kotlin.directories.add("src/sharedTest/java")
+        getByName("androidTest").kotlin.directories.add("src/sharedTest/java")
+    }
 }
 
 ksp {
@@ -81,7 +87,7 @@ jacoco {
     toolVersion = libs.versions.jacoco.get()
 }
 
-// Generated or non-product classes left out of the coverage report; reasons in E79.
+// Generated or non-product classes left out of the coverage report.
 val coverageExcludes = listOf(
     // Hilt / Dagger
     "**/Hilt_*", "**/HiltWrapper_*", "**/*_HiltModule*", "**/*_Factory*", "**/*Module_*Factory*",
@@ -96,7 +102,7 @@ val coverageExcludes = listOf(
     // Android
     "**/BuildConfig*", "**/R.class", "**/R\$*", "**/Manifest*",
 ) + fileTree("src/debug/java").matching { include("**/*.kt") }.files.flatMap { file ->
-    // Debug source set (latency measurement, E70): derived from the files so new ones drop out too.
+    // Debug source set (latency measurement), derived from its files so new ones drop out too.
     val base = file.relativeTo(file("src/debug/java")).invariantSeparatorsPath.removeSuffix(".kt")
     listOf("$base.class", "$base\$*", "${base}Kt.class", "${base}Kt\$*")
 }
