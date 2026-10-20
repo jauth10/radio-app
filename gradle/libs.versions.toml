@@ -30,6 +30,8 @@ junit = "4.13.2"
 androidxTestJunit = "1.3.0"
 espressoCore = "3.7.0"
 turbine = "1.2.1"
+# JaCoCo version AGP 9.3.1 and Gradle 9.5 ship with; pinned so agent and report match.
+jacoco = "0.8.14"
 
 [libraries]
 # --- Compose ---

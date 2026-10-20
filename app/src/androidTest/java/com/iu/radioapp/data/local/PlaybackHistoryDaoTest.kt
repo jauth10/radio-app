@@ -91,4 +91,29 @@ class PlaybackHistoryDaoTest {
 
         assertEquals(1, historyDao.count())
     }
+
+    @Test
+    fun theStationHistoryAddsMissingAiringsAndKeepsTheShowOfAStoredOne() = runTest {
+        historyDao.appendAndTrim(historyEntity(trackId = "trk-1", startedAt = at(10)))
+
+        historyDao.addMissingAndTrim(
+            listOf(
+                historyEntity(trackId = "trk-1", startedAt = at(10)).copy(showId = null),
+                historyEntity(trackId = "trk-2", startedAt = at(5)).copy(showId = null),
+            )
+        )
+
+        val history = historyDao.observeHistory().first()
+        assertEquals(listOf("trk-1", "trk-2"), history.map { it.trackId })
+        assertEquals("show-1", history.first().showId)
+    }
+
+    @Test
+    fun theStationHistoryIsCappedAtFiftyEntriesToo() = runTest {
+        historyDao.addMissingAndTrim((1..51).map { historyEntity(trackId = "trk-$it", startedAt = at(it)) })
+
+        val history = historyDao.observeHistory().first()
+        assertEquals(PlaybackHistoryDao.HISTORY_LIMIT, history.size)
+        assertEquals("trk-2", history.last().trackId)
+    }
 }

@@ -1,9 +1,13 @@
+import com.android.build.api.artifact.ScopedArtifact
+import com.android.build.api.variant.ScopedArtifacts
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
+    jacoco
 }
 
 android {
@@ -19,7 +23,8 @@ android {
         versionCode = 1
         versionName = "1.0"
 
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // Starts HiltTestApplication so the journey tests can replace Hilt modules.
+        testInstrumentationRunner = "com.iu.radioapp.HiltTestRunner"
 
         // Default: loopback, reached through "adb reverse tcp:8080 tcp:8080" - on
         // Android 17 the emulator alias 10.0.2.2 needs the local network
@@ -35,6 +40,11 @@ android {
     }
 
     buildTypes {
+        // Coverage of unit and instrumented tests, merged by debugCoverageReport.
+        debug {
+            enableUnitTestCoverage = true
+            enableAndroidTestCoverage = true
+        }
         release {
             optimization {
                 enable = false
@@ -49,11 +59,19 @@ android {
         compose = true
         buildConfig = true
     }
+    testCoverage {
+        jacocoVersion = libs.versions.jacoco.get()
+    }
+    // The data source fakes serve unit tests and on-device journey tests alike.
+    sourceSets {
+        getByName("test").kotlin.directories.add("src/sharedTest/java")
+        getByName("androidTest").kotlin.directories.add("src/sharedTest/java")
+    }
 }
 
 ksp {
     // Room writes the schema of every version here. The JSON is committed so a
-    // later migration can be diffed against a recorded schema (decision E20).
+    // later migration can be diffed against a recorded schema.
     arg("room.schemaLocation", "$projectDir/schemas")
 }
 
@@ -62,6 +80,65 @@ kotlin {
         // kotlin.time.Instant (stdlib) is still experimental; every domain field
         // of that type needs this opt-in. Mirrors contract/build.gradle.kts.
         optIn.add("kotlin.time.ExperimentalTime")
+    }
+}
+
+jacoco {
+    toolVersion = libs.versions.jacoco.get()
+}
+
+// Generated or non-product classes left out of the coverage report.
+val coverageExcludes = listOf(
+    // Hilt / Dagger
+    "**/Hilt_*", "**/HiltWrapper_*", "**/*_HiltModule*", "**/*_Factory*", "**/*Module_*Factory*",
+    "**/*_MembersInjector*", "**/*_GeneratedInjector*", "**/*_ComponentTreeDeps*",
+    "**/*_HiltComponents*", "**/*_AssistedFactory*", "dagger/hilt/**", "hilt_aggregated_deps/**",
+    // Room
+    "**/*_Impl*",
+    // Compose compiler
+    "**/ComposableSingletons*",
+    // kotlinx.serialization (navigation routes)
+    "**/*\$\$serializer*",
+    // Android
+    "**/BuildConfig*", "**/R.class", "**/R\$*", "**/Manifest*",
+) + fileTree("src/debug/java").matching { include("**/*.kt") }.files.flatMap { file ->
+    // Debug source set (latency measurement), derived from its files so new ones drop out too.
+    val base = file.relativeTo(file("src/debug/java")).invariantSeparatorsPath.removeSuffix(".kt")
+    listOf("$base.class", "$base\$*", "${base}Kt.class", "${base}Kt\$*")
+}
+
+/** JacocoReport plus the inputs AGP's variant API can fill with the compiled classes. */
+abstract class CoverageReport : JacocoReport() {
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val classJars: ListProperty<RegularFile>
+
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val classDirs: ListProperty<Directory>
+}
+
+androidComponents {
+    onVariants(selector().withBuildType("debug")) { variant ->
+        val report = tasks.register<CoverageReport>("debugCoverageReport") {
+            group = "verification"
+            description = "Merged line and branch coverage of the unit and instrumented tests, as HTML and XML."
+            dependsOn("testDebugUnitTest", "connectedDebugAndroidTest")
+            executionData.from(
+                layout.buildDirectory.file("outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec"),
+                layout.buildDirectory.dir("outputs/code_coverage/debugAndroidTest/connected")
+                    .map { dir -> dir.asFileTree.matching { include("**/*.ec") } },
+            )
+            classDirectories.from(files(classDirs).asFileTree.matching { exclude(coverageExcludes) })
+            sourceDirectories.from("src/main/java")
+            reports {
+                html.required = true
+                xml.required = true
+            }
+        }
+        variant.artifacts.forScope(ScopedArtifacts.Scope.PROJECT)
+            .use(report)
+            .toGet(ScopedArtifact.CLASSES, CoverageReport::classJars, CoverageReport::classDirs)
     }
 }
 

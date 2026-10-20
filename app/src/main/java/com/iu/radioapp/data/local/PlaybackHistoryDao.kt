@@ -47,6 +47,16 @@ abstract class PlaybackHistoryDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     protected abstract suspend fun insert(entry: PlaybackHistoryEntity)
 
+    // IGNORE: the station's history has no show and must not overwrite a stored airing that has one.
+    @Transaction
+    open suspend fun addMissingAndTrim(entries: List<PlaybackHistoryEntity>) {
+        insertMissing(entries)
+        trimToLimit(HISTORY_LIMIT)
+    }
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    protected abstract suspend fun insertMissing(entries: List<PlaybackHistoryEntity>)
+
     /**
      * Keeps the [limit] newest rows and deletes the rest.
      *
@@ -71,7 +81,7 @@ abstract class PlaybackHistoryDao {
     abstract suspend fun deleteAll()
 
     companion object {
-        /** Assumption 11: the local history holds at most 50 tracks. */
+        /** The local history holds at most 50 tracks. */
         const val HISTORY_LIMIT = 50
     }
 }
