@@ -28,7 +28,8 @@ object RequestsStore {
 
     private val limiter = HourlyLimiter()
 
-    private val responsesByIdempotencyKey = mutableMapOf<String, SongRequestResponse>()
+    // The first answer per key, rejections included: a retry gets the same status and body.
+    private val resultsByIdempotencyKey = mutableMapOf<String, SubmitResult>()
 
     private val statusByRequestId = mutableMapOf(
         "req-seed-accepted" to SongRequestStatusDto(
@@ -52,9 +53,11 @@ object RequestsStore {
 
     private var nextRequestId = 1
 
-    fun submit(idempotencyKey: String, request: CreateSongRequestDto, receivedAt: Instant): SubmitResult {
-        responsesByIdempotencyKey[idempotencyKey]?.let { return SubmitResult.Success(it) }
+    @Synchronized
+    fun submit(idempotencyKey: String, request: CreateSongRequestDto, receivedAt: Instant): SubmitResult =
+        resultsByIdempotencyKey.getOrPut(idempotencyKey) { evaluate(request, receivedAt) }
 
+    private fun evaluate(request: CreateSongRequestDto, receivedAt: Instant): SubmitResult {
         val track = ArchiveStore.tracks.find { it.trackId == request.trackId }
         if (track == null || !track.broadcastable) {
             return SubmitResult.Rejected("Dieser Titel ist nicht sendefähig.")
@@ -65,7 +68,6 @@ object RequestsStore {
 
         val requestId = "req-${nextRequestId++}"
         val response = SongRequestResponse(requestId = requestId, status = RequestStatus.PENDING, scheduledBroadcast = null)
-        responsesByIdempotencyKey[idempotencyKey] = response
         statusByRequestId[requestId] = SongRequestStatusDto(status = response.status, reason = null, scheduledBroadcast = null)
         overviewByListenerId.getOrPut(request.listenerId) { mutableListOf() }.add(
             SongRequestOverviewDto(requestId = requestId, trackTitle = track.title, status = response.status)
@@ -73,7 +75,9 @@ object RequestsStore {
         return SubmitResult.Success(response)
     }
 
+    @Synchronized
     fun statusOf(requestId: String): SongRequestStatusDto? = statusByRequestId[requestId]
 
+    @Synchronized
     fun overviewFor(listenerId: String): List<SongRequestOverviewDto> = overviewByListenerId[listenerId].orEmpty()
 }

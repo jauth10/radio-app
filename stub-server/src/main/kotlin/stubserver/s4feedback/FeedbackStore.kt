@@ -59,7 +59,8 @@ object FeedbackStore {
         val hour: Long,
     )
 
-    private val responsesByIdempotencyKey = mutableMapOf<String, RatingResponse>()
+    // The first answer per key, rejections included: a retry gets the same status and body.
+    private val resultsByIdempotencyKey = mutableMapOf<String, SubmitResult>()
     private val ratedKeys = mutableSetOf<RatingConflictKey>()
 
     private val ratings = mutableListOf(
@@ -89,9 +90,15 @@ object FeedbackStore {
 
     private var nextRatingId = 3
 
+    @Synchronized
     fun submit(idempotencyKey: String, rating: RatingRequest, receivedAt: Instant): SubmitResult {
-        responsesByIdempotencyKey[idempotencyKey]?.let { return SubmitResult.Success(it) }
+        resultsByIdempotencyKey[idempotencyKey]?.let { first ->
+            return if (first is SubmitResult.Success) SubmitResult.Success(first.response) else first
+        }
+        return evaluate(rating, receivedAt).also { resultsByIdempotencyKey[idempotencyKey] = it }
+    }
 
+    private fun evaluate(rating: RatingRequest, receivedAt: Instant): SubmitResult {
         if (rating.value !in 1..5) {
             return SubmitResult.Invalid("Die Bewertung muss zwischen 1 und 5 liegen.")
         }
@@ -118,10 +125,10 @@ object FeedbackStore {
         ratings.add(SeededRating(event, referenceId = rating.referenceId))
         ratedKeys += conflictKey
         val response = RatingResponse(ratingId = ratingId)
-        responsesByIdempotencyKey[idempotencyKey] = response
         return SubmitResult.Success(response, event, aggregateFor(SEEDED_SHOW_ID))
     }
 
+    @Synchronized
     fun aggregateFor(showId: String): AggregateDto {
         val now = Clock.System.now()
         if (showId != SEEDED_SHOW_ID) {
@@ -148,6 +155,7 @@ object FeedbackStore {
         )
     }
 
+    @Synchronized
     fun since(since: Instant, showId: String): List<RatingEventDto> {
         if (showId != SEEDED_SHOW_ID) return emptyList()
         return ratings.filter { it.event.serverReceivedAt > since }.map { it.event }

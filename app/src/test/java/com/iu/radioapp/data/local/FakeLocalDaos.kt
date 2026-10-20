@@ -5,21 +5,36 @@ import com.iu.radioapp.domain.RequestStatus
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
 import kotlin.time.Instant
 
 // In-memory DAO doubles. The abstract DAOs are subclassed, so their @Transaction bodies
 // run unchanged - but nothing rolls back here; that stays with the instrumented tests.
+
+class LocalFault {
+    var broken = false
+
+    fun check() {
+        if (broken) throw IllegalStateException("simulated: disk I/O error")
+    }
+}
+
+private fun <T> Flow<T>.checkedBy(fault: LocalFault): Flow<T> = onEach { fault.check() }
 
 class InMemoryLocalStore {
     val outbox = MutableStateFlow<List<OutboxEntity>>(emptyList())
     val songRequests = MutableStateFlow<List<SongRequestEntity>>(emptyList())
 }
 
-class FakeOutboxDao(private val store: InMemoryLocalStore) : OutboxDao() {
+class FakeOutboxDao(
+    private val store: InMemoryLocalStore,
+    private val fault: LocalFault = LocalFault(),
+) : OutboxDao() {
 
     private var nextId = 1L
 
     override suspend fun insert(entry: OutboxEntity): Long {
+        fault.check()
         check(store.outbox.value.none { it.idempotencyKey == entry.idempotencyKey }) {
             "UNIQUE constraint failed: outbox.idempotency_key"
         }
@@ -28,16 +43,16 @@ class FakeOutboxDao(private val store: InMemoryLocalStore) : OutboxDao() {
         return id
     }
 
-    override fun observeAll(): Flow<List<OutboxEntity>> = store.outbox
+    override fun observeAll(): Flow<List<OutboxEntity>> = store.outbox.checkedBy(fault)
 
     override fun observeByStatus(status: DeliveryStatus): Flow<List<OutboxEntity>> =
-        store.outbox.map { entries -> entries.filter { it.status == status } }
+        store.outbox.map { entries -> entries.filter { it.status == status } }.checkedBy(fault)
 
     override suspend fun findEntry(entryId: Long): OutboxEntity? =
         store.outbox.value.firstOrNull { it.id == entryId }
 
     override suspend fun findByIdempotencyKey(idempotencyKey: String): OutboxEntity? =
-        store.outbox.value.firstOrNull { it.idempotencyKey == idempotencyKey }
+        fault.check().let { store.outbox.value }.firstOrNull { it.idempotencyKey == idempotencyKey }
 
     override suspend fun entriesWithStatus(status: DeliveryStatus): List<OutboxEntity> =
         store.outbox.value.filter { it.status == status }
@@ -50,6 +65,10 @@ class FakeOutboxDao(private val store: InMemoryLocalStore) : OutboxDao() {
 
     override suspend fun setRejected(entryId: Long, status: DeliveryStatus, reason: String) =
         update(entryId) { it.copy(status = status, rejectionReason = reason) }
+
+    override suspend fun deleteEntry(entryId: Long) {
+        store.outbox.value = store.outbox.value.filter { it.id != entryId }
+    }
 
     override suspend fun insertRequest(request: SongRequestEntity) {
         check(store.songRequests.value.none { it.idempotencyKey == request.idempotencyKey }) {
@@ -80,7 +99,10 @@ class FakeOutboxDao(private val store: InMemoryLocalStore) : OutboxDao() {
     }
 }
 
-class FakeSongRequestDao(private val store: InMemoryLocalStore) : SongRequestDao {
+class FakeSongRequestDao(
+    private val store: InMemoryLocalStore,
+    private val fault: LocalFault = LocalFault(),
+) : SongRequestDao {
 
     override suspend fun insert(request: SongRequestEntity) {
         check(store.songRequests.value.none { it.idempotencyKey == request.idempotencyKey }) {
@@ -97,7 +119,7 @@ class FakeSongRequestDao(private val store: InMemoryLocalStore) : SongRequestDao
     override fun observeRequests(listenerId: String): Flow<List<SongRequestEntity>> =
         store.songRequests.map { rows ->
             rows.filter { it.listenerId == listenerId }.sortedByDescending { it.createdAt }
-        }
+        }.checkedBy(fault)
 
     override fun observeRequest(idempotencyKey: String): Flow<SongRequestEntity?> =
         store.songRequests.map { rows -> rows.firstOrNull { it.idempotencyKey == idempotencyKey } }
@@ -110,11 +132,12 @@ class FakeSongRequestDao(private val store: InMemoryLocalStore) : SongRequestDao
     }
 }
 
-class FakeTrackCacheDao : TrackCacheDao {
+class FakeTrackCacheDao(private val fault: LocalFault = LocalFault()) : TrackCacheDao {
 
     val tracks = MutableStateFlow<Map<String, TrackCacheEntity>>(emptyMap())
 
     override suspend fun upsert(track: TrackCacheEntity) {
+        fault.check()
         tracks.value += track.trackId to track
     }
 
@@ -125,24 +148,25 @@ class FakeTrackCacheDao : TrackCacheDao {
     override fun observeTracks(): Flow<List<TrackCacheEntity>> =
         tracks.map { cached -> cached.values.sortedBy { it.title } }
 
-    override suspend fun findTrack(trackId: String): TrackCacheEntity? = tracks.value[trackId]
+    override suspend fun findTrack(trackId: String): TrackCacheEntity? = fault.check().let { tracks.value[trackId] }
 
     override suspend fun deleteAll() {
         tracks.value = emptyMap()
     }
 }
 
-class FakePlaybackHistoryDao : PlaybackHistoryDao() {
+class FakePlaybackHistoryDao(private val fault: LocalFault = LocalFault()) : PlaybackHistoryDao() {
 
     val rows = MutableStateFlow<List<PlaybackHistoryEntity>>(emptyList())
 
-    override fun observeHistory(): Flow<List<PlaybackHistoryEntity>> = rows
+    override fun observeHistory(): Flow<List<PlaybackHistoryEntity>> = rows.checkedBy(fault)
 
-    override fun observeLatest(): Flow<PlaybackHistoryEntity?> = rows.map { it.firstOrNull() }
+    override fun observeLatest(): Flow<PlaybackHistoryEntity?> = rows.map { it.firstOrNull() }.checkedBy(fault)
 
     override suspend fun count(): Int = rows.value.size
 
     override suspend fun insert(entry: PlaybackHistoryEntity) {
+        fault.check()
         rows.value = sorted(rows.value.filter { it.playbackId != entry.playbackId } + entry)
     }
 

@@ -61,7 +61,11 @@ class HostInteractor @Inject constructor(
     fun observeHostFeed(): Flow<HostFeed> = flow {
         var expired = false
         emitAll(
-            hosts.observeSession().flatMapLatest { session ->
+            hosts.observeSession().flatMapLatest { outcome ->
+                val session = when (outcome) {
+                    is Outcome.Success -> outcome.value
+                    is Outcome.Error -> return@flatMapLatest flowOf(HostFeed.Unavailable(outcome.failure))
+                }
                 if (session == null) {
                     flowOf(if (expired) HostFeed.SessionExpired else HostFeed.SignedOut)
                 } else {

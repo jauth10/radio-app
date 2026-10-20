@@ -17,6 +17,7 @@ import com.iu.radioapp.domain.Rating
 import com.iu.radioapp.domain.RatingAggregate
 import com.iu.radioapp.domain.RatingEvent
 import com.iu.radioapp.domain.RatingFeedSignal
+import com.iu.radioapp.domain.RatingWithDelivery
 import com.iu.radioapp.domain.ReceivedRating
 import com.iu.radioapp.domain.map
 import com.iu.radioapp.repository.mapping.toDomain
@@ -38,6 +39,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.SerializationException
 import javax.inject.Inject
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.minutes
@@ -51,7 +53,7 @@ class RatingRepository @Inject constructor(
     private val clock: Clock,
 ) {
 
-    suspend fun enqueue(rating: Rating): Outcome<Unit> {
+    suspend fun enqueue(rating: Rating): Outcome<Unit> = localOutcome {
         outboxDao.insert(
             OutboxEntity(
                 idempotencyKey = rating.idempotencyKey,
@@ -63,7 +65,6 @@ class RatingRepository @Inject constructor(
                 rejectionReason = null,
             )
         )
-        return Outcome.Success(Unit)
     }
 
     suspend fun deliverOpen(): Outcome<Unit> = outboxDao.deliverOpenEntries(
@@ -76,9 +77,8 @@ class RatingRepository @Inject constructor(
         onRejected = { entry, reason -> outboxDao.markRejected(entry.id, reason) },
     )
 
-    suspend fun retry(idempotencyKey: String): Outcome<Unit> {
+    suspend fun retry(idempotencyKey: String): Outcome<Unit> = localOutcome {
         outboxDao.reopenIfFailed(idempotencyKey)
-        return Outcome.Success(Unit)
     }
 
     suspend fun getAggregate(showId: String): Outcome<RatingAggregate> =
@@ -87,9 +87,34 @@ class RatingRepository @Inject constructor(
     suspend fun getRatingsSince(since: Instant, showId: String, token: String): Outcome<List<RatingEvent>> =
         feedback.getRatingsSince(since, showId, token).map { events -> events.map { it.toDomain() } }
 
-    fun observeDeliveries(): Flow<List<OutboxEntry>> =
+    fun observeDeliveries(): Flow<Outcome<List<OutboxEntry>>> =
         outboxDao.observeAll().map { entries ->
             entries.filter { it.operation == OperationType.RATING }.map { it.toDomain() }
+        }.asLocalOutcomes()
+
+    /**
+     * Failed and rejected ratings, newest first; read back from the stored payload, since ratings have no table of
+     * their own. An unreadable payload is skipped: it could never be resent, and it must not block the readable ones.
+     */
+    fun observeUndeliveredRatings(): Flow<Outcome<List<RatingWithDelivery>>> =
+        outboxDao.observeAll().map { entries ->
+            entries.filter { it.operation == OperationType.RATING && it.status in UNDELIVERED }
+                .sortedByDescending { it.id }
+                .mapNotNull { entry ->
+                    entry.toRatingOrNull()?.let { RatingWithDelivery(it, entry.status, entry.rejectionReason) }
+                }
+        }.asLocalOutcomes()
+
+    suspend fun dismissRejected(idempotencyKey: String): Outcome<Unit> = localOutcome {
+        val entry = outboxDao.findByIdempotencyKey(idempotencyKey)
+        if (entry?.status == DeliveryStatus.REJECTED) outboxDao.dismissRejectedRating(entry.id)
+    }
+
+    private fun OutboxEntity.toRatingOrNull(): Rating? =
+        try {
+            RadioJson.decodeFromString<RatingRequest>(payload).toDomain(idempotencyKey)
+        } catch (e: SerializationException) {
+            null
         }
 
     /**
@@ -240,5 +265,6 @@ class RatingRepository @Inject constructor(
         val CONFIRMATION_DELAY = 1.seconds
         val POLL_OVERLAP = 30.seconds
         val INITIAL_LOOKBACK = 1.minutes
+        private val UNDELIVERED = setOf(DeliveryStatus.FAILED, DeliveryStatus.REJECTED)
     }
 }

@@ -81,7 +81,7 @@ class HostRepositoryTest {
 
         assertEquals(
             SessionCredentials("fake-session-device-1", validUntil = TEST_NOW + 1.hours, startedAt = TEST_NOW),
-            repository.observeSession().first(),
+            repository.observeSession().firstValue(),
         )
     }
 
@@ -91,13 +91,13 @@ class HostRepositoryTest {
 
         repository.endSession()
 
-        assertNull(repository.observeSession().first())
+        assertNull(repository.observeSession().firstValue())
     }
 
     @Test
     fun `unrelated preference writes do not repeat the session`() = runTest {
         repository.observeSession().test {
-            assertNull(awaitItem())
+            assertNull(awaitItem().successValue)
             repository.login("1234", "device-1")
             awaitItem()
 

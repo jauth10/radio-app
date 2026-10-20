@@ -40,8 +40,16 @@ class NowPlayingViewModel @Inject constructor(
         }
     }
 
+    // A failed Room flow has ended; a reload collects it again.
+    private val history = reloads.flatMapLatest { tracks.observeHistory() }
+
     val uiState: StateFlow<NowPlayingUiState> =
-        combine(current, tracks.observeHistory()) { outcome, history -> toUiState(outcome, history) }
+        combine(current, history) { outcome, history ->
+            when (history) {
+                is Outcome.Error -> NowPlayingUiState.Error(history.failure, cached = null, history = emptyList())
+                is Outcome.Success -> toUiState(outcome, history.value)
+            }
+        }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), NowPlayingUiState.Loading)
 
     init {

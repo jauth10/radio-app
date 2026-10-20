@@ -117,6 +117,17 @@ abstract class OutboxDao {
         setStatus(entryId, DeliveryStatus.OPEN)
     }
 
+    // Song requests are not dismissed: their rejection also lives in the song_request row.
+    @Transaction
+    open suspend fun dismissRejectedRating(entryId: Long) {
+        val entry = requireEntry(entryId)
+        requireOperation(entry, OperationType.RATING)
+        require(entry.status == DeliveryStatus.REJECTED) {
+            "outbox entry $entryId is ${entry.status}, only REJECTED can be dismissed"
+        }
+        deleteEntry(entryId)
+    }
+
     private suspend fun requireEntry(entryId: Long): OutboxEntity =
         requireNotNull(findEntry(entryId)) { "outbox entry $entryId does not exist" }
 
@@ -130,6 +141,9 @@ abstract class OutboxDao {
 
     @Query("UPDATE outbox SET status = :status, rejection_reason = :reason WHERE id = :entryId")
     protected abstract suspend fun setRejected(entryId: Long, status: DeliveryStatus, reason: String)
+
+    @Query("DELETE FROM outbox WHERE id = :entryId")
+    protected abstract suspend fun deleteEntry(entryId: Long)
 
     @Insert(onConflict = OnConflictStrategy.ABORT)
     protected abstract suspend fun insertRequest(request: SongRequestEntity)

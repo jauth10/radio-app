@@ -8,10 +8,13 @@ import com.iu.radioapp.domain.Outcome
 import com.iu.radioapp.domain.RatingAggregate
 import com.iu.radioapp.interactor.HostInteractor
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.shareIn
@@ -20,12 +23,15 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 import kotlin.time.Duration.Companion.seconds
 
+@OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class HostFeedViewModel @Inject constructor(
     private val hosts: HostInteractor,
 ) : ViewModel() {
 
-    private val feed = hosts.observeHostFeed()
+    private val reloads = MutableStateFlow(0)
+
+    private val feed = reloads.flatMapLatest { hosts.observeHostFeed() }
         .shareIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), replay = 1)
 
     // Re-checks the show on air while the view is visible, so talk segments and stale data hide the numbers.
@@ -43,12 +49,17 @@ class HostFeedViewModel @Inject constructor(
                 HostFeed.SignedOut -> HostAccess.SignedOut(sessionExpired = false)
                 HostFeed.SessionExpired -> HostAccess.SignedOut(sessionExpired = true)
                 is HostFeed.Active -> HostAccess.SignedIn
+                is HostFeed.Unavailable -> HostAccess.Unavailable(feed.failure)
             }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), HostAccess.Checking)
 
     val uiState: StateFlow<HostFeedUiState> = combine(feed, showCheck, ::toUiState)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), HostFeedUiState.Loading)
+
+    fun reload() {
+        reloads.value++
+    }
 
     fun signOut() {
         viewModelScope.launch { hosts.endSession() }

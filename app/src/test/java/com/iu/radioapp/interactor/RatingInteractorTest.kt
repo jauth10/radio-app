@@ -1,5 +1,6 @@
 package com.iu.radioapp.interactor
 
+import com.iu.radioapp.repository.firstValue
 import com.iu.radioapp.domain.DeliveryStatus
 import com.iu.radioapp.domain.Failure
 import com.iu.radioapp.domain.Outcome
@@ -34,7 +35,9 @@ class RatingInteractorTest {
     private suspend fun rate(target: RatingTarget = RatingTarget.PLAYLIST, value: Int = 4): Rating =
         (interactor.submitRating(target, value, comment = null) as Submission.Queued).value
 
-    private suspend fun deliveries() = interactor.observeDeliveries().first()
+    private suspend fun deliveries() = interactor.observeDeliveries().firstValue()
+
+    private suspend fun undelivered(target: RatingTarget) = interactor.observeUndeliveredRatings(target).firstValue()
 
     private suspend fun cachedContextAfter(age: Duration): RatingContext {
         context()
@@ -145,6 +148,54 @@ class RatingInteractorTest {
     }
 
     @Test
+    fun `queuing waits its turn, a manual retry is delivered immediately`() = runTest {
+        val rating = rate()
+        fixture.feedback.nextFailure = Failure.Server
+        fixture.feedback.failureRepeatCount = 5
+        repeat(5) { repository.deliverOpen() }
+
+        interactor.retry(rating.idempotencyKey)
+
+        assertEquals(1, scheduler.calls)
+        assertEquals(1, scheduler.immediateCalls)
+    }
+
+    @Test
+    fun `failed ratings are listed per target and leave the list once retried`() = runTest {
+        val playlist = rate(RatingTarget.PLAYLIST)
+        val host = rate(RatingTarget.HOST, value = 2)
+        fixture.feedback.nextFailure = Failure.Server
+        fixture.feedback.failureRepeatCount = 10
+        repeat(5) { repository.deliverOpen() }
+
+        assertEquals(listOf(playlist), undelivered(RatingTarget.PLAYLIST).map { it.rating })
+        assertEquals(listOf(host), undelivered(RatingTarget.HOST).map { it.rating })
+
+        interactor.retry(playlist.idempotencyKey)
+
+        assertTrue(undelivered(RatingTarget.PLAYLIST).isEmpty())
+        assertEquals(1, scheduler.immediateCalls)
+    }
+
+    @Test
+    fun `a rejected rating stays listed with its reason until dismissed`() = runTest {
+        val rating = rate()
+        fixture.feedback.nextFailure = Failure.Rejected(reason = "Bereits bewertet", retryable = true)
+        repository.deliverOpen()
+
+        val rejected = undelivered(RatingTarget.PLAYLIST).single()
+        assertEquals(rating, rejected.rating)
+        assertEquals(DeliveryStatus.REJECTED, rejected.status)
+        assertEquals("Bereits bewertet", rejected.rejectionReason)
+        assertTrue(undelivered(RatingTarget.HOST).isEmpty())
+
+        assertEquals(Outcome.Success(Unit), interactor.dismissRejected(rating.idempotencyKey))
+
+        assertTrue(undelivered(RatingTarget.PLAYLIST).isEmpty())
+        assertEquals(0, scheduler.immediateCalls)
+    }
+
+    @Test
     fun `key stays stable through failed attempts and manual retry`() = runTest {
         val rating = rate()
         fixture.feedback.nextFailure = Failure.Connection
@@ -155,7 +206,8 @@ class RatingInteractorTest {
         assertEquals(Outcome.Success(Unit), interactor.retry(rating.idempotencyKey))
         repository.deliverOpen()
 
-        assertEquals(2, scheduler.calls)
+        assertEquals(1, scheduler.calls)
+        assertEquals(1, scheduler.immediateCalls)
         val delivered = deliveries().single()
         assertEquals(rating.idempotencyKey, delivered.idempotencyKey)
         assertEquals(DeliveryStatus.DELIVERED, delivered.status)

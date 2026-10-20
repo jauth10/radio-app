@@ -5,6 +5,7 @@ import com.iu.radioapp.domain.OutboxEntry
 import com.iu.radioapp.domain.Rating
 import com.iu.radioapp.domain.RatingContext
 import com.iu.radioapp.domain.RatingTarget
+import com.iu.radioapp.domain.RatingWithDelivery
 import com.iu.radioapp.domain.ReadResult
 import com.iu.radioapp.domain.RefusalReason
 import com.iu.radioapp.domain.Submission
@@ -14,6 +15,7 @@ import com.iu.radioapp.repository.ListenerRepository
 import com.iu.radioapp.repository.RatingRepository
 import com.iu.radioapp.repository.TrackRepository
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import java.util.UUID
 import javax.inject.Inject
 import kotlin.time.Clock
@@ -82,10 +84,18 @@ class RatingInteractor @Inject constructor(
 
     suspend fun retry(idempotencyKey: String): Outcome<Unit> {
         val outcome = ratings.retry(idempotencyKey)
-        if (outcome is Outcome.Success) deliveryScheduler.schedule()
+        if (outcome is Outcome.Success) deliveryScheduler.scheduleImmediately()
         return outcome
     }
 
     /** Station rejections arrive here as REJECTED with their reason. */
-    fun observeDeliveries(): Flow<List<OutboxEntry>> = ratings.observeDeliveries()
+    fun observeDeliveries(): Flow<Outcome<List<OutboxEntry>>> = ratings.observeDeliveries()
+
+    /** Outlive the screen they were given on: a failed rating stays resendable, a rejected one keeps its reason. */
+    fun observeUndeliveredRatings(target: RatingTarget): Flow<Outcome<List<RatingWithDelivery>>> =
+        ratings.observeUndeliveredRatings().map { outcome ->
+            outcome.map { list -> list.filter { it.rating.target == target } }
+        }
+
+    suspend fun dismissRejected(idempotencyKey: String): Outcome<Unit> = ratings.dismissRejected(idempotencyKey)
 }

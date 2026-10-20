@@ -80,6 +80,37 @@ class FeedbackRoutesTest {
     }
 
     @Test
+    fun `a rejection is the first answer for its key, so a retry gets it again even with a changed body`() = stubTest { client ->
+        val listener = uniqueId("listener")
+        val key = uniqueId("key")
+        val before = client.aggregate().playlistRatingCount
+
+        val first = client.rate(key, listener, value = 6)
+        val replay = client.rate(key, listener, value = 4)
+
+        assertEquals(HttpStatusCode.UnprocessableEntity, first.status)
+        assertEquals(first.status, replay.status)
+        assertEquals(first.error(), replay.error())
+        assertEquals(before, client.aggregate().playlistRatingCount)
+    }
+
+    @Test
+    fun `a conflict is answered identically on a retry with the same key`() = stubTest { client ->
+        withinOneHour {
+            val listener = uniqueId("listener")
+            val key = uniqueId("key")
+            assertEquals(HttpStatusCode.Created, client.rate(listenerId = listener).status)
+
+            val first = client.rate(key, listener)
+            val replay = client.rate(key, listener)
+
+            assertEquals(HttpStatusCode.Conflict, first.status)
+            assertEquals(first.status, replay.status)
+            assertEquals(first.error(), replay.error())
+        }
+    }
+
+    @Test
     fun `a replay is answered even after the same listener has rated again, instead of a conflict`() = stubTest { client ->
         withinOneHour {
             val listener = uniqueId("listener")

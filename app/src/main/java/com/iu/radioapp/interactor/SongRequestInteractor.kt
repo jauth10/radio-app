@@ -75,7 +75,7 @@ class SongRequestInteractor @Inject constructor(
 
     suspend fun retry(idempotencyKey: String): Outcome<Unit> {
         val outcome = requests.retry(idempotencyKey)
-        if (outcome is Outcome.Success) deliveryScheduler.schedule()
+        if (outcome is Outcome.Success) deliveryScheduler.scheduleImmediately()
         return outcome
     }
 
@@ -84,19 +84,23 @@ class SongRequestInteractor @Inject constructor(
         is Outcome.Error -> outcome
     }
 
-    fun observeRequests(): Flow<List<SongRequestWithDelivery>> = flow {
+    fun observeRequests(): Flow<Outcome<List<SongRequestWithDelivery>>> = flow {
         val listener = when (val outcome = listeners.getListener()) {
             is Outcome.Success -> outcome.value
-            // Without an identity there are no requests to show.
             is Outcome.Error -> {
-                emit(emptyList())
+                emit(outcome)
                 return@flow
             }
         }
         emitAll(
             combine(requests.observeRequests(listener.listenerId), requests.observeDeliveries()) { rows, deliveries ->
-                val statusByKey = deliveries.associate { it.idempotencyKey to it.status }
-                rows.map { SongRequestWithDelivery(it, statusByKey[it.idempotencyKey]) }
+                when (rows) {
+                    is Outcome.Error -> rows
+                    is Outcome.Success -> deliveries.map { entries ->
+                        val statusByKey = entries.associate { it.idempotencyKey to it.status }
+                        rows.value.map { SongRequestWithDelivery(it, statusByKey[it.idempotencyKey]) }
+                    }
+                }
             }
         )
     }

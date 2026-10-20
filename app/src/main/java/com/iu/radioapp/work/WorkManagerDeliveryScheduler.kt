@@ -24,6 +24,11 @@ class WorkManagerDeliveryScheduler @Inject constructor(
         enqueue(ExistingWorkPolicy.APPEND_OR_REPLACE)
     }
 
+    // Replaced, not appended: a predecessor in backoff would hold the retry for minutes.
+    override fun scheduleImmediately() {
+        enqueue(ExistingWorkPolicy.REPLACE)
+    }
+
     // Kept, not appended: every cold start by WorkManager itself would otherwise add another run.
     fun ensureScheduled() {
         enqueue(ExistingWorkPolicy.KEEP)

@@ -10,6 +10,7 @@ import com.iu.radioapp.domain.Failure
 import com.iu.radioapp.domain.OperationType
 import com.iu.radioapp.domain.Outcome
 import com.iu.radioapp.domain.RatingTarget
+import com.iu.radioapp.domain.RatingWithDelivery
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -115,7 +116,7 @@ class RatingRepositoryTest {
         repository.deliverOpen()
 
         assertEquals(DeliveryStatus.OPEN, outboxDao.findEntry(songRequestEntryId)?.status)
-        assertEquals(listOf("key-r"), repository.observeDeliveries().first().map { it.idempotencyKey })
+        assertEquals(listOf("key-r"), repository.observeDeliveries().firstValue().map { it.idempotencyKey })
     }
 
     @Test
@@ -168,5 +169,92 @@ class RatingRepositoryTest {
 
         assertEquals(DeliveryStatus.DELIVERED, entry("key-old")?.status)
     }
-}
 
+    @Test
+    fun `failed ratings are read back from their payload, newest first, without open or song request entries`() = runTest {
+        repository.enqueue(rating("key-a", value = 2))
+        repository.enqueue(rating("key-b", value = 5, target = RatingTarget.HOST, referenceId = "host-1"))
+        // A server fault, unlike a lost connection, does not stop the run, so both entries use up their attempts.
+        feedback.nextFailure = Failure.Server
+        feedback.failureRepeatCount = 10
+        repeat(5) { repository.deliverOpen() }
+        repository.enqueue(rating("key-open"))
+        outboxDao.insert(
+            OutboxEntity(
+                idempotencyKey = "key-s",
+                operation = OperationType.SONG_REQUEST,
+                payload = "{}",
+                attempts = 5,
+                lastAttemptAt = null,
+                status = DeliveryStatus.FAILED,
+                rejectionReason = null,
+            )
+        )
+
+        val failed = repository.observeUndeliveredRatings().firstValue()
+
+        val hostRating = rating("key-b", value = 5, target = RatingTarget.HOST, referenceId = "host-1")
+        assertEquals(listOf(hostRating, rating("key-a", value = 2)), failed.map { it.rating })
+        assertTrue(failed.all { it.status == DeliveryStatus.FAILED && it.rejectionReason == null })
+    }
+
+    @Test
+    fun `rejected ratings are listed with their reason beside the failed ones`() = runTest {
+        repository.enqueue(rating("key-f"))
+        feedback.nextFailure = Failure.Server
+        feedback.failureRepeatCount = 5
+        repeat(5) { repository.deliverOpen() }
+        repository.enqueue(rating("key-r", value = 6))
+        repository.deliverOpen()
+        repository.enqueue(rating("key-d"))
+        repository.deliverOpen()
+
+        assertEquals(
+            listOf(
+                RatingWithDelivery(rating("key-r", value = 6), DeliveryStatus.REJECTED, "value must be 1..5"),
+                RatingWithDelivery(rating("key-f"), DeliveryStatus.FAILED, null),
+            ),
+            repository.observeUndeliveredRatings().firstValue(),
+        )
+    }
+
+    @Test
+    fun `dismissing removes a rejected rating and leaves a failed one alone`() = runTest {
+        repository.enqueue(rating("key-f"))
+        feedback.nextFailure = Failure.Server
+        feedback.failureRepeatCount = 5
+        repeat(5) { repository.deliverOpen() }
+        repository.enqueue(rating("key-r", value = 6))
+        repository.deliverOpen()
+
+        assertEquals(Outcome.Success(Unit), repository.dismissRejected("key-r"))
+        assertEquals(Outcome.Success(Unit), repository.dismissRejected("key-f"))
+
+        assertNull(entry("key-r"))
+        assertEquals(listOf("key-f"), repository.observeUndeliveredRatings().firstValue().map { it.rating.idempotencyKey })
+    }
+
+    @Test
+    fun `an unreadable failed payload is left out instead of failing the whole list`() = runTest {
+        outboxDao.insert(
+            OutboxEntity(
+                idempotencyKey = "key-broken",
+                operation = OperationType.RATING,
+                payload = "{",
+                attempts = 5,
+                lastAttemptAt = null,
+                status = DeliveryStatus.FAILED,
+                rejectionReason = null,
+            )
+        )
+        repository.enqueue(rating("key-a"))
+        feedback.nextFailure = Failure.Server
+        feedback.failureRepeatCount = 5
+        repeat(5) { repository.deliverOpen() }
+
+        assertEquals(
+            Outcome.Success(listOf(RatingWithDelivery(rating("key-a"), DeliveryStatus.FAILED, null))),
+            repository.observeUndeliveredRatings().first(),
+        )
+    }
+}

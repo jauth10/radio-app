@@ -1,5 +1,6 @@
 package com.iu.radioapp.interactor
 
+import com.iu.radioapp.repository.firstValue
 import com.iu.radioapp.data.remote.s4feedback.ConnectionEvent
 import com.iu.radioapp.domain.ConnectionState
 import com.iu.radioapp.domain.Failure
@@ -119,7 +120,7 @@ class HostInteractorFeedTest {
         assertEquals(listenerId, (fixture.listenerRepository.getListener() as Outcome.Success).value.listenerId)
         assertEquals(
             listOf((queued as Submission.Queued).value.idempotencyKey),
-            fixture.ratingInteractor.observeDeliveries().first().map { it.idempotencyKey },
+            fixture.ratingInteractor.observeDeliveries().firstValue().map { it.idempotencyKey },
         )
     }
 

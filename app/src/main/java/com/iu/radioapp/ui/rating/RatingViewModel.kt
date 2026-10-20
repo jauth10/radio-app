@@ -3,9 +3,11 @@ package com.iu.radioapp.ui.rating
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.iu.radioapp.domain.Failure
+import com.iu.radioapp.domain.OutboxEntry
 import com.iu.radioapp.domain.Outcome
 import com.iu.radioapp.domain.RatingContext
 import com.iu.radioapp.domain.RatingTarget
+import com.iu.radioapp.domain.RatingWithDelivery
 import com.iu.radioapp.domain.RefusalReason
 import com.iu.radioapp.domain.Submission
 import com.iu.radioapp.domain.referenceIdFor
@@ -65,13 +67,14 @@ class RatingViewModel @AssistedInject constructor(
         }
     }
 
-    private val submitted = combine(submittedKey, ratings.observeDeliveries()) { key, entries ->
-        entries.firstOrNull { it.idempotencyKey == key }
-            ?.let { SubmittedRating(it.idempotencyKey, it.status, it.rejectionReason) }
+    private data class Deliveries(val submitted: SubmittedRating?, val undelivered: List<RatingWithDelivery>)
+
+    private val deliveries = reloads.flatMapLatest {
+        combine(submittedKey, ratings.observeDeliveries(), ratings.observeUndeliveredRatings(target), ::toDeliveries)
     }
 
     val uiState: StateFlow<RatingUiState> =
-        combine(context, input, ratedReferences, submitted, ::toUiState)
+        combine(context, input, ratedReferences, deliveries, ::toUiState)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), RatingUiState.Loading)
 
     fun reload() {
@@ -111,6 +114,16 @@ class RatingViewModel @AssistedInject constructor(
         viewModelScope.launch { ratings.retry(key) }
     }
 
+    // The retried rating moves into the status card, so its new delivery stays in view.
+    fun retryFailed(idempotencyKey: String) {
+        submittedKey.value = idempotencyKey
+        viewModelScope.launch { ratings.retry(idempotencyKey) }
+    }
+
+    fun dismissRejected(idempotencyKey: String) {
+        viewModelScope.launch { ratings.dismissRejected(idempotencyKey) }
+    }
+
     private fun currentPanel(): RatingPanel? = when (val state = uiState.value) {
         is RatingUiState.Content -> state.panel
         is RatingUiState.Offline -> state.panel
@@ -118,21 +131,54 @@ class RatingViewModel @AssistedInject constructor(
         else -> null
     }
 
+    // The rating in the status card is left out of the undelivered list, so it never shows twice.
+    private fun toDeliveries(
+        key: String?,
+        entries: Outcome<List<OutboxEntry>>,
+        undelivered: Outcome<List<RatingWithDelivery>>,
+    ): Outcome<Deliveries> {
+        val all = when (entries) {
+            is Outcome.Success -> entries.value
+            is Outcome.Error -> return entries
+        }
+        val undeliveredRatings = when (undelivered) {
+            is Outcome.Success -> undelivered.value
+            is Outcome.Error -> return undelivered
+        }
+        val submitted = all.firstOrNull { it.idempotencyKey == key }
+            ?.let { SubmittedRating(it.idempotencyKey, it.status, it.rejectionReason) }
+        return Outcome.Success(Deliveries(submitted, undeliveredRatings.filter { it.rating.idempotencyKey != key }))
+    }
+
+    private fun toUiState(
+        outcome: Outcome<RatingContext?>?,
+        input: Input,
+        rated: Set<String>,
+        delivery: Outcome<Deliveries>,
+    ): RatingUiState {
+        val deliveries = when (delivery) {
+            is Outcome.Success -> delivery.value
+            is Outcome.Error -> return RatingUiState.Error(delivery.failure, panel = null, submitted = null)
+        }
+        return toUiState(outcome, input, rated, deliveries.submitted, deliveries.undelivered)
+    }
+
     private fun toUiState(
         outcome: Outcome<RatingContext?>?,
         input: Input,
         rated: Set<String>,
         submitted: SubmittedRating?,
+        undelivered: List<RatingWithDelivery>,
     ): RatingUiState = when (outcome) {
         null -> RatingUiState.Loading
         is Outcome.Error -> when (outcome.failure) {
-            Failure.Connection -> RatingUiState.Offline(panel = null, submitted = submitted)
-            else -> RatingUiState.Error(outcome.failure, panel = null, submitted = submitted)
+            Failure.Connection -> RatingUiState.Offline(panel = null, submitted = submitted, undelivered = undelivered)
+            else -> RatingUiState.Error(outcome.failure, panel = null, submitted = submitted, undelivered = undelivered)
         }
         is Outcome.Success -> {
             val context = outcome.value
             if (context == null) {
-                RatingUiState.Empty(submitted)
+                RatingUiState.Empty(submitted, undelivered)
             } else {
                 val panel = RatingPanel(
                     target = target,
@@ -146,9 +192,9 @@ class RatingViewModel @AssistedInject constructor(
                     submitFailure = input.failure,
                 )
                 when (val cause = context.cause) {
-                    null -> RatingUiState.Content(panel, submitted)
-                    Failure.Connection -> RatingUiState.Offline(panel, submitted)
-                    else -> RatingUiState.Error(cause, panel, submitted)
+                    null -> RatingUiState.Content(panel, submitted, undelivered)
+                    Failure.Connection -> RatingUiState.Offline(panel, submitted, undelivered)
+                    else -> RatingUiState.Error(cause, panel, submitted, undelivered)
                 }
             }
         }

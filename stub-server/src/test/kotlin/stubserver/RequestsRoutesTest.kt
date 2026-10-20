@@ -114,11 +114,16 @@ class RequestsRoutesTest {
     }
 
     @Test
-    fun `a rejected wish is not stored, so a later retry of it is judged again`() = stubTest { client ->
+    fun `a rejection is the first answer for its key, so a retry gets it again even with a changed body`() = stubTest { client ->
         val listener = uniqueId("listener")
         val key = uniqueId("key")
 
-        assertEquals(HttpStatusCode.UnprocessableEntity, client.wish(key, listener, trackId = "trk-3").status)
+        val first = client.wish(key, listener, trackId = "trk-3")
+        val replay = client.wish(key, listener, trackId = "trk-1")
+
+        assertEquals(HttpStatusCode.UnprocessableEntity, first.status)
+        assertEquals(first.status, replay.status)
+        assertEquals(first.error(), replay.error())
         assertEquals(0, client.get("/requests?listenerId=$listener").body<List<SongRequestOverviewDto>>().size)
     }
 

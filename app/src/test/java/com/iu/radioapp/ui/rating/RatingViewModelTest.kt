@@ -1,5 +1,6 @@
 package com.iu.radioapp.ui.rating
 
+import com.iu.radioapp.repository.firstValue
 import androidx.lifecycle.viewModelScope
 import com.iu.radioapp.domain.DeliveryStatus
 import com.iu.radioapp.domain.Failure
@@ -60,7 +61,7 @@ class RatingViewModelTest {
         runCurrent()
     }
 
-    private suspend fun deliveries() = fixture.ratingInteractor.observeDeliveries().first()
+    private suspend fun deliveries() = fixture.ratingInteractor.observeDeliveries().firstValue()
 
     @Test
     fun `loading turns into content for the running show and its host`() = runTest {
@@ -215,6 +216,64 @@ class RatingViewModelTest {
         fixture.ratingRepository.deliverOpen()
         runCurrent()
         assertEquals(DeliveryStatus.DELIVERED, viewModel.uiState.value.submitted?.status)
+    }
+
+    @Test
+    fun `a failed rating from an earlier screen can be retried from a new one`() = runTest {
+        val earlier = start()
+        rate(earlier)
+        fixture.feedback.nextFailure = Failure.Server
+        fixture.feedback.failureRepeatCount = 5
+        repeat(5) { fixture.ratingRepository.deliverOpen() }
+        earlier.viewModelScope.cancel()
+
+        val later = start()
+        val failed = later.uiState.value.undelivered.single().rating
+        assertEquals(4, failed.value)
+        assertNull(later.uiState.value.submitted)
+
+        later.retryFailed(failed.idempotencyKey)
+        runCurrent()
+
+        assertEquals(DeliveryStatus.OPEN, later.uiState.value.submitted?.status)
+        assertTrue(later.uiState.value.undelivered.isEmpty())
+        fixture.ratingRepository.deliverOpen()
+        runCurrent()
+        assertEquals(DeliveryStatus.DELIVERED, later.uiState.value.submitted?.status)
+    }
+
+    @Test
+    fun `the rating in the status card is not listed again, and each tab lists only its own target`() = runTest {
+        val playlist = start(RatingTarget.PLAYLIST)
+        val host = start(RatingTarget.HOST)
+        rate(playlist)
+        fixture.feedback.nextFailure = Failure.Server
+        fixture.feedback.failureRepeatCount = 5
+        repeat(5) { fixture.ratingRepository.deliverOpen() }
+        runCurrent()
+
+        assertEquals(DeliveryStatus.FAILED, playlist.uiState.value.submitted?.status)
+        assertTrue(playlist.uiState.value.undelivered.isEmpty())
+        assertTrue(host.uiState.value.undelivered.isEmpty())
+    }
+
+    @Test
+    fun `a rejection that arrives after leaving the screen is shown on the next visit until dismissed`() = runTest {
+        val earlier = start()
+        rate(earlier)
+        earlier.viewModelScope.cancel()
+        fixture.feedback.nextFailure = Failure.Rejected(reason = "Bereits bewertet", retryable = false)
+        fixture.ratingRepository.deliverOpen()
+
+        val later = start()
+        val rejected = later.uiState.value.undelivered.single()
+        assertEquals(DeliveryStatus.REJECTED, rejected.status)
+        assertEquals("Bereits bewertet", rejected.rejectionReason)
+
+        later.dismissRejected(rejected.rating.idempotencyKey)
+        runCurrent()
+
+        assertTrue(later.uiState.value.undelivered.isEmpty())
     }
 
     @Test
