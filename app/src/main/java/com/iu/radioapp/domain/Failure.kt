@@ -14,8 +14,11 @@ package com.iu.radioapp.domain
  *   Connection    - no connection, timeout. Reading: serve the cache and mark it
  *                   stale. Writing: keep it in the outbox and let the delivery
  *                   worker retry.
- *   Server        - 500, 503. Retry with growing backoff, at most five attempts.
- *   Rejected      - 400, 409, 422, 429. Never retried, the reason is shown.
+ *   Server        - any 5xx (500-599). Retry with growing backoff, at most five
+ *                   attempts.
+ *   Rejected      - every other non-2xx except 401/403, e.g. 400, 404, 409, 422,
+ *                   429, plus any body that cannot be decoded. Never retried,
+ *                   the reason is shown.
  *   Unauthorized  - 401, 403. Re-establish the host session; the listener path
  *                   is unaffected.
  *   Local         - Room or DataStore failed. Shown as an error, never retried
@@ -26,11 +29,11 @@ sealed interface Failure {
     /** No connection or a timeout. Carries no detail: there is nothing to show. */
     data object Connection : Failure
 
-    /** Server-side fault, 500 or 503. Retryable with growing backoff. */
+    /** Server-side fault, any 5xx. Retryable with growing backoff. */
     data object Server : Failure
 
     /**
-     * The request was understood and refused on business grounds (400, 409, 422, 429).
+     * The request was understood and refused on business grounds (e.g. 400, 404, 409, 422, 429).
      *
      * [reason] and [retryable] come from the server's error body, but arrive here as
      * plain String and Boolean - the wire type stays behind in the data source. A
